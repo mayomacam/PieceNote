@@ -1,0 +1,10 @@
+# Core Qt Framework
+PySide6
+
+# Markdown Rendering and Syntax Highlighting
+markdown
+Pygments
+pymdown-extensions
+
+# PDF Export Functionality
+xhtml2pdf
