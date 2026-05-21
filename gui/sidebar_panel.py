@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from utils.helpers import SETTINGS, log
+from utils.logger import audit_log
 
 
 class SidebarPanel(QWidget):
@@ -30,15 +31,22 @@ class SidebarPanel(QWidget):
         folder_frame = QFrame()
         folder_layout = QVBoxLayout(folder_frame)
         folder_layout.setContentsMargins(0, 0, 0, 0)
+        folder_layout.setSpacing(2)
+
         folder_header = QHBoxLayout()
-        folder_header.addWidget(QLabel("Folders"))
+        folder_label = QLabel("FOLDERS")
+        folder_label.setStyleSheet("font-weight: bold; color: #888; font-size: 9pt; margin-left: 5px;")
+        folder_header.addWidget(folder_label)
         folder_header.addStretch()
+
         self.btn_folder_new = QPushButton("＋")
         self.btn_folder_rename = QPushButton("✏")
         self.btn_folder_del = QPushButton("🗑")
-        folder_header.addWidget(self.btn_folder_new)
-        folder_header.addWidget(self.btn_folder_rename)
-        folder_header.addWidget(self.btn_folder_del)
+        for btn in [self.btn_folder_new, self.btn_folder_rename, self.btn_folder_del]:
+            btn.setFixedWidth(28)
+            btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
+            folder_header.addWidget(btn)
+
         folder_layout.addLayout(folder_header)
         self.folder_list = QListWidget()
         folder_layout.addWidget(self.folder_list)
@@ -47,21 +55,31 @@ class SidebarPanel(QWidget):
         # Note section
         note_frame = QFrame()
         note_layout = QVBoxLayout(note_frame)
-        note_layout.setContentsMargins(0, 0, 0, 0)
+        note_layout.setContentsMargins(0, 5, 0, 0)
+        note_layout.setSpacing(2)
+
         note_header = QHBoxLayout()
-        note_header.addWidget(QLabel("Notes"))
+        note_label = QLabel("NOTES")
+        note_label.setStyleSheet("font-weight: bold; color: #888; font-size: 9pt; margin-left: 5px;")
+        note_header.addWidget(note_label)
         note_header.addStretch()
+
         self.btn_note_new = QPushButton("＋")
         self.btn_note_rename = QPushButton("✏")
         self.btn_note_del = QPushButton("🗑")
-        note_header.addWidget(self.btn_note_new)
-        note_header.addWidget(self.btn_note_rename)
-        note_header.addWidget(self.btn_note_del)
+        for btn in [self.btn_note_new, self.btn_note_rename, self.btn_note_del]:
+            btn.setFixedWidth(28)
+            btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
+            note_header.addWidget(btn)
+
         note_layout.addLayout(note_header)
+
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search notes...")
+        self.search_bar.setPlaceholderText("Filter notes...")
+        self.search_bar.setClearButtonEnabled(True)
         self.search_bar.textChanged.connect(self._filter_notes)
         note_layout.addWidget(self.search_bar)
+
         self.note_list = QListWidget()
         self.note_list.setDragDropMode(QListWidget.InternalMove)
         self.note_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -104,7 +122,7 @@ class SidebarPanel(QWidget):
         if current_item:
             self.current_folder = current_item.data(Qt.UserRole)
             folder_name = self.folders[self.current_folder]['name']
-            self.status_message_updated.emit(f"Folder: {folder_name}")
+            self.status_message_updated.emit(f"  📁 {folder_name}")
             self.search_bar.clear()
             self.note_list.setEnabled(True)
             self.search_bar.setEnabled(True)
@@ -114,7 +132,7 @@ class SidebarPanel(QWidget):
             self.note_list.clear()
             self.note_list.setEnabled(False)
             self.search_bar.setEnabled(False)
-            self.status_message_updated.emit("No folder selected")
+            self.status_message_updated.emit("  No folder selected")
         self._update_button_states()
 
     def _on_note_selection_changed(self):
@@ -174,53 +192,58 @@ class SidebarPanel(QWidget):
             self.save_data_to_storage()
 
     def save_data_to_storage(self):
-        data = {
-            "folders": self.folders,
-            "notes": self.notes,
-            "next_folder_id": self.next_folder_id,
-            "next_note_id": self.next_note_id,
-        }
-        if self.storage.save(data):
-            self.request_status_message.emit("All data saved.", 3000)
-        else:
-            self.request_status_message.emit("Failed to save data.", 5000)
+        # This method is now less critical as we do incremental updates,
+        # but we'll keep it for any bulk operations if needed in the future.
+        # For now, most actions call specific storage methods.
+        self.request_status_message.emit("Data is saved incrementally.", 3000)
 
     def create_folder(self, name=None, activate=True):
         if not name:
             name, ok = QInputDialog.getText(self, "New Folder", "Enter folder name:")
         if not name or not ok or not name.strip():
             return
-        fid = self.next_folder_id
-        self.next_folder_id += 1
-        self.folders[fid] = {"name": name, "notes": []}
-        self._add_folder_item_to_list(fid, name)
-        if activate:
-            self.folder_list.setCurrentRow(self.folder_list.count() - 1)
-        self.save_data_to_storage()
+
+        fid = self.storage.create_folder(name)
+        if fid:
+            self.folders[fid] = {"name": name, "notes": []}
+            self.next_folder_id = max(self.next_folder_id, fid + 1)
+            self._add_folder_item_to_list(fid, name)
+            if activate:
+                self.folder_list.setCurrentRow(self.folder_list.count() - 1)
+            self.request_status_message.emit(f"Folder '{name}' created.", 3000)
+        else:
+            QMessageBox.critical(self, "Error", "Failed to create folder in database.")
 
     def create_note(self):
         if self.current_folder is None:
             QMessageBox.warning(self, "No Folder", "Please select a folder to create a note in.")
             return
-        nid = self.next_note_id
-        self.next_note_id += 1
-        title = f"Untitled Note {nid}"
-        self.notes[nid] = {"title": title, "body": ""}
-        self.folders[self.current_folder]["notes"].append(nid)
-        self._populate_note_list()
-        self.update_folder_item_text(self.current_folder)
-        self.save_data_to_storage()
-        for i in range(self.note_list.count()):
-            item = self.note_list.item(i)
-            if item.data(Qt.UserRole) == nid:
-                self.note_list.setCurrentItem(item)
-                self.note_open_requested.emit(nid)
-                break
+
+        # We don't have a specific title yet, use a default
+        temp_title = "Untitled Note"
+        nid = self.storage.create_note(self.current_folder, temp_title)
+
+        if nid:
+            self.notes[nid] = {"title": temp_title}
+            self.folders[self.current_folder]["notes"].append(nid)
+            self.next_note_id = max(self.next_note_id, nid + 1)
+            self._populate_note_list()
+            self.update_folder_item_text(self.current_folder)
+
+            for i in range(self.note_list.count()):
+                item = self.note_list.item(i)
+                if item.data(Qt.UserRole) == nid:
+                    self.note_list.setCurrentItem(item)
+                    self.note_open_requested.emit(nid)
+                    break
+            self.request_status_message.emit("Note created.", 3000)
+        else:
+            QMessageBox.critical(self, "Error", "Failed to create note in database.")
 
     def update_note_content(self, nid, new_body):
-        if nid in self.notes:
-            self.notes[nid]["body"] = new_body
-            self.save_data_to_storage()
+        if self.storage.update_note_body(nid, new_body):
+            # We don't store the body in self.notes anymore (lazy loading)
+            self.request_status_message.emit("Note saved.", 2000)
 
     def _populate_folder_list(self):
         self.folder_list.clear()
@@ -277,9 +300,12 @@ class SidebarPanel(QWidget):
         old_name = self.folders[fid]["name"]
         new_name, ok = QInputDialog.getText(self, "Rename Folder", "New name:", text=old_name)
         if ok and new_name.strip() and new_name != old_name:
-            self.folders[fid]["name"] = new_name
-            self.update_folder_item_text(fid)
-            self.save_data_to_storage()
+            if self.storage.rename_folder(fid, new_name):
+                self.folders[fid]["name"] = new_name
+                self.update_folder_item_text(fid)
+                self.request_status_message.emit("Folder renamed.", 2000)
+            else:
+                QMessageBox.critical(self, "Error", "Failed to rename folder in database.")
 
     def _rename_note(self):
         if len(self.note_list.selectedItems()) != 1:
@@ -289,9 +315,12 @@ class SidebarPanel(QWidget):
         old_title = self.notes[nid]["title"]
         new_title, ok = QInputDialog.getText(self, "Rename Note", "New title:", text=old_title)
         if ok and new_title.strip() and new_title != old_title:
-            self.notes[nid]["title"] = new_title
-            self._populate_note_list()
-            self.save_data_to_storage()
+            if self.storage.update_note_title(nid, new_title):
+                self.notes[nid]["title"] = new_title
+                self._populate_note_list()
+                self.request_status_message.emit("Note renamed.", 2000)
+            else:
+                QMessageBox.critical(self, "Error", "Failed to rename note in database.")
 
     def _delete_folder(self):
         item = self.folder_list.currentItem()
@@ -305,17 +334,21 @@ class SidebarPanel(QWidget):
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            for nid in self.folders[fid]["notes"]:
-                if nid in self.notes:
-                    del self.notes[nid]
-            del self.folders[fid]
-            self.folder_list.takeItem(self.folder_list.row(item))
-            if self.current_folder == fid:
-                self.current_folder = None
-                self.note_list.clear()
-                self.note_closed_or_deleted.emit()
-            self.save_data_to_storage()
-            self._update_button_states()
+            audit_log("Folder Deletion", f"Folder: {folder_name} (ID: {fid})")
+            if self.storage.delete_folder(fid):
+                for nid in self.folders[fid]["notes"]:
+                    if nid in self.notes:
+                        del self.notes[nid]
+                del self.folders[fid]
+                self.folder_list.takeItem(self.folder_list.row(item))
+                if self.current_folder == fid:
+                    self.current_folder = None
+                    self.note_list.clear()
+                    self.note_closed_or_deleted.emit()
+                self._update_button_states()
+                self.request_status_message.emit("Folder deleted.", 3000)
+            else:
+                QMessageBox.critical(self, "Error", "Failed to delete folder from database.")
 
     def _delete_notes(self):
         items = self.note_list.selectedItems()
@@ -331,19 +364,24 @@ class SidebarPanel(QWidget):
             self, "Delete Notes", question, QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            folder_notes = self.folders[self.current_folder]["notes"]
-            ids_to_remove = {item.data(Qt.UserRole) for item in items}
-            for nid in ids_to_remove:
-                if nid in self.notes:
-                    del self.notes[nid]
-            self.folders[self.current_folder]["notes"] = [
-                nid for nid in folder_notes if nid not in ids_to_remove
-            ]
-            self._populate_note_list()
-            self.update_folder_item_text(self.current_folder)
-            self.save_data_to_storage()
-            self.note_closed_or_deleted.emit()
-            self._update_button_states()
+            ids_to_remove = [item.data(Qt.UserRole) for item in items]
+            audit_log("Note Deletion", f"Note IDs: {ids_to_remove}")
+
+            if self.storage.delete_notes(ids_to_remove):
+                folder_notes = self.folders[self.current_folder]["notes"]
+                for nid in ids_to_remove:
+                    if nid in self.notes:
+                        del self.notes[nid]
+                self.folders[self.current_folder]["notes"] = [
+                    nid for nid in folder_notes if nid not in ids_to_remove
+                ]
+                self._populate_note_list()
+                self.update_folder_item_text(self.current_folder)
+                self.note_closed_or_deleted.emit()
+                self._update_button_states()
+                self.request_status_message.emit(f"{note_count} note(s) deleted.", 3000)
+            else:
+                QMessageBox.critical(self, "Error", "Failed to delete some notes from database.")
 
     def _on_note_double_clicked(self, item):
         self.note_open_requested.emit(item.data(Qt.UserRole))
@@ -352,9 +390,12 @@ class SidebarPanel(QWidget):
         if self.current_folder is None:
             return
         new_order = [self.note_list.item(i).data(Qt.UserRole) for i in range(self.note_list.count())]
-        self.folders[self.current_folder]["notes"] = new_order
-        self._populate_note_list()
-        self.save_data_to_storage()
+        if self.storage.reorder_notes(self.current_folder, new_order):
+            self.folders[self.current_folder]["notes"] = new_order
+            self._populate_note_list()
+            self.request_status_message.emit("Notes reordered.", 2000)
+        else:
+            QMessageBox.critical(self, "Error", "Failed to save new order to database.")
 
     def _filter_notes(self):
         query = self.search_bar.text().lower()

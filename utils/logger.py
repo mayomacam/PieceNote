@@ -46,4 +46,11 @@ def setup_logging():
     logger.info("="*50)
     return logger
 
+def audit_log(action, details=None):
+    """Specific logging for security-sensitive actions (SOC 2 alignment)."""
+    message = f"[AUDIT] Action: {action}"
+    if details:
+        message += f" | Details: {details}"
+    log.info(message)
+
 log = setup_logging()

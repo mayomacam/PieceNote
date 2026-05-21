@@ -26,6 +26,7 @@ from pygments.formatters import HtmlFormatter
 from features.image_handler import select_image, image_path_to_markdown
 from features.command_runner import CommandRunner
 from gui.command_dialog import RunCommandDialog
+from utils.logger import audit_log
 
 
 class ChecklistBridge(QObject):
@@ -247,6 +248,7 @@ class EditorPanel(QWidget):
         if dialog.exec():
             command = dialog.get_command()
             if command:
+                audit_log("Command Execution", f"User initiated command: {command}")
                 if self.window():
                     self.window().statusBar().showMessage(f"Running: {command}...")
                 self.command_thread = QThread()
