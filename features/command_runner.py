@@ -2,6 +2,7 @@
 #(Improvement #3: The threading logic to prevent UI freezing)*
 
 import subprocess
+import shlex
 from PySide6.QtCore import QObject, Signal
 
 class CommandRunner(QObject):
@@ -21,12 +22,16 @@ class CommandRunner(QObject):
             return
 
         try:
+            # Use shlex to safely split the command string into a list
+            # and avoid shell=True to prevent command injection.
+            args = shlex.split(self.command)
+
             result = subprocess.run(
-                self.command,
-                shell=True,
+                args,
+                shell=False,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60-second timeout
+                timeout=60
             )
             output = result.stdout
             if result.stderr:

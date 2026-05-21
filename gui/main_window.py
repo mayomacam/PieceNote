@@ -9,6 +9,7 @@ from gui.editor_panel import EditorPanel
 from gui.settings_dialog import SettingsDialog
 from features.storage import StorageManager, DatabaseCorruptError
 from utils.helpers import SETTINGS, get_settings, log
+from utils.logger import audit_log
 from features.export import export_notes_to_file
 from gui.search_dialog import SearchDialog
 from gui.help_dialogs import MarkdownGuideDialog
@@ -46,13 +47,13 @@ class PieceNoteMainWindow(QMainWindow):
         self.setCentralWidget(self.splitter)
 
         # Setup the detailed, multi-part status bar
-        self.status_folder_label = QLabel("No folder selected")
+        self.status_folder_label = QLabel("  No folder selected")
         self.status_note_label = QLabel("No note open")
         self.status_metrics_label = QLabel("")
         self.statusBar().addPermanentWidget(self.status_folder_label)
-        self.statusBar().addPermanentWidget(QLabel(" | "))
         self.statusBar().addPermanentWidget(self.status_note_label, 1) # Give it stretch
         self.statusBar().addPermanentWidget(self.status_metrics_label)
+        self.status_metrics_label.setStyleSheet("margin-right: 10px;")
 
         # --- Signal Connections ---
         self.sidebar.note_open_requested.connect(self.open_note_in_tab)
@@ -87,12 +88,15 @@ class PieceNoteMainWindow(QMainWindow):
             QMessageBox.warning(self, "Open Note", f"Note with ID {note_id} not found.")
             return
 
+        # Lazy load the body content
+        body = self.storage.get_note_body(note_id)
+
         editor = EditorPanel(self)
         # Apply the startup settings (including font) to the new editor
         editor.apply_settings(self.settings)
         editor.note_saved.connect(self.sidebar.update_note_content)
         editor.metrics_updated.connect(self.update_metrics)
-        editor.load_note(note_id, note["title"], note["body"])
+        editor.load_note(note_id, note["title"], body)
 
         index = self.tab_widget.addTab(editor, note["title"])
         self.tab_widget.setCurrentIndex(index)
@@ -116,10 +120,10 @@ class PieceNoteMainWindow(QMainWindow):
         editor = self.tab_widget.currentWidget()
         if isinstance(editor, EditorPanel):
             title = self.tab_widget.tabText(index)
-            self.status_note_label.setText(f"Editing: {title}")
+            self.status_note_label.setText(f" 📝 {title}")
             editor.calculate_metrics()
         else:
-            self.status_note_label.setText("No note open")
+            self.status_note_label.setText("  No note open")
             self.status_metrics_label.setText("")
 
     def update_metrics(self, metrics):
@@ -138,6 +142,7 @@ class PieceNoteMainWindow(QMainWindow):
         self._run_export([self.sidebar.get_note_by_id(note_id)], single_file=True)
 
     def handle_db_corruption(self):
+        audit_log("Database Corruption Detected")
         self.storage = None
         reply = QMessageBox.critical(
             self,
@@ -147,8 +152,10 @@ class PieceNoteMainWindow(QMainWindow):
         )
         if reply == QMessageBox.Yes:
             if StorageManager().restore_from_backup():
+                audit_log("Database Restored from Backup")
                 QMessageBox.information(self, "Success", "Database restored. Application will restart.")
             else:
+                audit_log("Database Restore Failed")
                 QMessageBox.warning(self, "Restore Failed", "No backup file was found.")
         self.close()
 
@@ -221,21 +228,26 @@ class PieceNoteMainWindow(QMainWindow):
         dialog.exec()
 
     def closeEvent(self, event):
-        reply = QMessageBox.question(
-            self,
-            "Exit",
-            "Save all changes before exiting?",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
-        )
-        if reply == QMessageBox.Cancel:
-            event.ignore()
-            return
+        # With incremental saving, we mostly just need to ensure the current editor is saved.
+        # But for safety, we'll ask the user.
+        unsaved_editors = [e for e in self.open_tabs.values() if e._is_modified]
 
-        if self.storage: # Ensure storage was initialized before trying to save
+        if unsaved_editors:
+            reply = QMessageBox.question(
+                self,
+                "Exit",
+                "Save changes to open notes before exiting?",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+            )
+            if reply == QMessageBox.Cancel:
+                event.ignore()
+                return
+
             if reply == QMessageBox.Yes:
-                for editor in self.open_tabs.values():
+                for editor in unsaved_editors:
                     editor._autosave()
-                self.sidebar.save_data_to_storage()
+
+        if self.storage:
             self._save_window_state()
 
         event.accept()
@@ -304,6 +316,7 @@ class PieceNoteMainWindow(QMainWindow):
             file_format = "md"
 
         try:
+            audit_log("Data Export", f"Exporting {len(notes_list)} note(s) to {file_path} (Format: {file_format})")
             export_notes_to_file(file_path, notes_list, file_format, single_file)
             self.statusBar().showMessage(f"Successfully exported to {file_path}", 5000)
         except Exception as e:
