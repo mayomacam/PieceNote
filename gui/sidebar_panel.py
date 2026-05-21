@@ -366,12 +366,8 @@ class SidebarPanel(QWidget):
         if reply == QMessageBox.Yes:
             ids_to_remove = [item.data(Qt.UserRole) for item in items]
             audit_log("Note Deletion", f"Note IDs: {ids_to_remove}")
-            success = True
-            for nid in ids_to_remove:
-                if not self.storage.delete_note(nid):
-                    success = False
 
-            if success:
+            if self.storage.delete_notes(ids_to_remove):
                 folder_notes = self.folders[self.current_folder]["notes"]
                 for nid in ids_to_remove:
                     if nid in self.notes:

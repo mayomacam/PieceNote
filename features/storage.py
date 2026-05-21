@@ -24,7 +24,10 @@ class StorageManager:
         self._import_from_json_if_needed()
 
     def _get_connection(self):
-        return sqlite3.connect(self.filepath)
+        conn = sqlite3.connect(self.filepath)
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        return conn
 
     def _create_tables(self):
         conn = self._get_connection()
@@ -115,13 +118,22 @@ class StorageManager:
             if conn:
                 conn.close()
 
-    def _create_backup(self):
-        """Creates a backup of the database file."""
+    _backup_done_this_session = False
+
+    def _create_backup(self, force=False):
+        """
+        Creates a backup of the database file.
+        By default, only once per application session to optimize performance.
+        """
+        if not force and StorageManager._backup_done_this_session:
+            return True
+
         if os.path.exists(self.filepath):
             try:
                 os.makedirs(os.path.dirname(self.backup_path), exist_ok=True)
                 shutil.copy2(self.filepath, self.backup_path)
                 log.info(f"Database backup created at {self.backup_path}")
+                StorageManager._backup_done_this_session = True
                 return True
             except IOError as e:
                 log.error(f"Could not create database backup: {e}")
@@ -189,14 +201,23 @@ class StorageManager:
 
     def delete_note(self, note_id):
         """Deletes a specific note."""
+        return self.delete_notes([note_id])
+
+    def delete_notes(self, note_ids):
+        """Deletes multiple notes efficiently in a single transaction."""
+        if not note_ids:
+            return True
+        # We backup before deletions as they are destructive
+        self._create_backup(force=True)
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
+            placeholders = ",".join(["?"] * len(note_ids))
+            cursor.execute(f"DELETE FROM notes WHERE note_id IN ({placeholders})", note_ids)
             conn.commit()
             return True
         except Exception as e:
-            log.error(f"Failed to delete note: {e}")
+            log.error(f"Failed to delete notes: {e}")
             return False
         finally:
             conn.close()
@@ -236,11 +257,10 @@ class StorageManager:
 
     def delete_folder(self, folder_id):
         """Deletes a folder and all its notes (CASCADE)."""
+        self._create_backup(force=True)
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            # Enable foreign key support for CASCADE
-            cursor.execute("PRAGMA foreign_keys = ON")
             cursor.execute("DELETE FROM folders WHERE folder_id = ?", (folder_id,))
             conn.commit()
             return True
