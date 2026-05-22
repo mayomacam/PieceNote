@@ -28,39 +28,42 @@ if __name__ == "__main__":
     except FileNotFoundError:
         log.warning(f"Stylesheet not found at: {STYLE_SHEET_PATH}")
 
-    password, ok = QInputDialog.getText(
-        None, "Master Password",
-        "Enter Master Password to Unlock Database:",
-        QLineEdit.Password
-    )
-
-    if not ok or not password:
-        sys.exit(0)
-
-    # Decrypt if necessary
-    try:
-        temp_storage = StorageManager(DB_FILE_PATH)
-        temp_storage.decrypt_database(password)
-    except Exception as e:
-        # If it was already decrypted (SQLite header), this might fail or do nothing.
-        # But if it fails because of wrong password, we should catch it.
-        # SQLite header is "SQLite format 3\x00"
+    # Check if database is encrypted
+    is_encrypted = False
+    if os.path.exists(DB_FILE_PATH):
         with open(DB_FILE_PATH, 'rb') as f:
             header = f.read(16)
         if not header.startswith(b'SQLite format 3'):
-             log.error(f"Failed to unlock database: {e}")
-             QMessageBox.critical(None, "Unlock Failed", f"Incorrect password or corrupted database: {e}")
-             sys.exit(1)
+            is_encrypted = True
 
-    window = PieceNoteMainWindow()
-    window.master_password = password # Pass it to window for encryption on close
+    password = None
+    if is_encrypted or not os.path.exists(DB_FILE_PATH):
+        password, ok = QInputDialog.getText(
+            None, "Master Password",
+            "Enter Master Password to Unlock/Create Database:",
+            QLineEdit.Password
+        )
+
+        if not ok or not password:
+            sys.exit(0)
+
+    # Initialize storage with in-memory decryption
+    try:
+        storage = StorageManager(DB_FILE_PATH, password)
+    except Exception as e:
+         log.error(f"Failed to unlock database: {e}")
+         QMessageBox.critical(None, "Unlock Failed", f"Incorrect password or corrupted database: {e}")
+         sys.exit(1)
+
+    window = PieceNoteMainWindow(storage=storage)
+    window.master_password = password
     window.show()
 
     exit_code = app.exec()
 
-    # Encrypt on shutdown
-    if window.storage and window.master_password:
-        window.storage.encrypt_database(window.master_password)
+    # Securely save and encrypt to disk on shutdown
+    if window.storage:
+        window.storage.save_to_disk()
 
     audit_log("Application Exiting")
     sys.exit(exit_code)
