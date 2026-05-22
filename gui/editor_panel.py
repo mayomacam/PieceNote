@@ -18,6 +18,7 @@ except ImportError:
 
 
 import markdown
+import bleach
 from markdown.extensions.fenced_code import FencedCodeExtension
 from markdown.extensions.tables import TableExtension
 from pymdownx.tasklist import TasklistExtension
@@ -46,6 +47,7 @@ class EditorPanel(QWidget):
         self.current_note_id = None
         self._is_modified = False
         self.command_thread = None
+        self.render_cache = {}
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -59,9 +61,11 @@ class EditorPanel(QWidget):
         self.btn_save = QPushButton("💾 Save")
         self.btn_img = QPushButton("🖼️ Add Image")
         self.btn_term = QPushButton("📟 Run Command")
+        self.btn_preview = QPushButton("👁️ Toggle Preview")
         button_layout.addWidget(self.btn_save)
         button_layout.addWidget(self.btn_img)
         button_layout.addWidget(self.btn_term)
+        button_layout.addWidget(self.btn_preview)
         button_layout.addStretch()
         layout.addLayout(button_layout)
 
@@ -85,6 +89,7 @@ class EditorPanel(QWidget):
         self.btn_save.clicked.connect(self._save_note)
         self.btn_img.clicked.connect(self._insert_image)
         self.btn_term.clicked.connect(self._run_terminal_command)
+        self.btn_preview.clicked.connect(self._toggle_preview)
         self.editor.textChanged.connect(self.trigger_preview_update)
 
         self.autosave_timer = QTimer(self)
@@ -105,6 +110,9 @@ class EditorPanel(QWidget):
             settings.get("editor_font_size", 11)
         )
         self.editor.setFont(font)
+
+    def _toggle_preview(self):
+        self.preview.setVisible(not self.preview.isVisible())
 
     def calculate_metrics(self):
         text = self.editor.toPlainText()
@@ -134,6 +142,7 @@ class EditorPanel(QWidget):
         self.btn_save.setEnabled(False)
         self.btn_img.setEnabled(False)
         self.btn_term.setEnabled(False)
+        self.btn_preview.setEnabled(False)
         self.editor.setEnabled(False)
         self.calculate_metrics()
 
@@ -147,6 +156,7 @@ class EditorPanel(QWidget):
         self.btn_save.setEnabled(True)
         self.btn_img.setEnabled(True)
         self.btn_term.setEnabled(True)
+        self.btn_preview.setEnabled(True)
         self.editor.setEnabled(True)
         self.editor.setFocus()
         self.calculate_metrics()
@@ -167,6 +177,15 @@ class EditorPanel(QWidget):
 
     def _update_preview(self):
         raw_text = self.editor.toPlainText()
+        if raw_text in self.render_cache:
+            full_html = self.render_cache[raw_text]
+            if WEB_ENGINE_AVAILABLE:
+                base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)
+                self.preview.setHtml(full_html, baseUrl=base_url)
+            else:
+                self.preview.setPlainText(full_html)
+            return
+
         css = HtmlFormatter(style='monokai').get_style_defs('.codehilite')
         js_script = (
             """<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>"""
@@ -183,8 +202,26 @@ class EditorPanel(QWidget):
             TableExtension(),
             TasklistExtension(custom_checkbox=True)
         ]
-        html_body = markdown.markdown(raw_text, extensions=md_extensions)
+        html_body_raw = markdown.markdown(raw_text, extensions=md_extensions)
 
+        # SOC 2 Alignment: Sanitize HTML to prevent XSS
+        # Allow some basic tags and attributes for Markdown rendering
+        allowed_tags = list(bleach.sanitizer.ALLOWED_TAGS) + [
+            'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr', 'pre', 'code',
+            'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'span', 'div',
+            'input', 'li', 'ul', 'ol'
+        ]
+        allowed_attrs = bleach.sanitizer.ALLOWED_ATTRIBUTES
+        allowed_attrs.update({
+            'img': ['src', 'alt', 'title', 'width', 'height'],
+            'code': ['class'],
+            'span': ['class'],
+            'div': ['class'],
+            'input': ['type', 'checked', 'disabled'], # For tasklists
+            'li': ['class']
+        })
+
+        html_body = bleach.clean(html_body_raw, tags=allowed_tags, attributes=allowed_attrs)
 
         full_html = (
             f"""<html><head><meta charset="UTF-8">{js_script}"""
@@ -197,6 +234,11 @@ class EditorPanel(QWidget):
             f"""th,td{{border:1px solid #777;padding:6px 13px;}}"""
             f"""</style></head><body>{html_body}</body></html>"""
         )
+        # Simple cache eviction: limit to 100 entries
+        if len(self.render_cache) > 100:
+            self.render_cache.pop(next(iter(self.render_cache)))
+        self.render_cache[raw_text] = full_html
+
         if WEB_ENGINE_AVAILABLE:
             base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)
             self.preview.setHtml(full_html, baseUrl=base_url)

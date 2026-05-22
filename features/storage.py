@@ -2,6 +2,8 @@ import sqlite3
 import json
 import os
 from utils.helpers import DB_FILE_PATH, BACKUP_LOCATION, JSON_IMPORT_PATH, get_settings, log
+from utils.encryption import EncryptionManager
+from utils.logger import audit_log
 import shutil
 
 
@@ -14,19 +16,29 @@ class DatabaseCorruptError(Exception):
 
 
 class StorageManager:
-    def __init__(self, filepath=DB_FILE_PATH):
+    def __init__(self, filepath=DB_FILE_PATH, password=None):
         self.filepath = filepath
+        self.password = password
         # backup path in case we need to restore
         self.backup_path = os.path.join(BACKUP_LOCATION, f"{os.path.basename(filepath)}.bak")
-        # Always ensure the tables exist before doing anything else.
-        # "CREATE TABLE IF NOT EXISTS" is safe to run every time.
-        self._create_tables()
-        self._import_from_json_if_needed()
+
+        # Only create tables and import if the database is NOT encrypted
+        if os.path.exists(self.filepath):
+            with open(self.filepath, 'rb') as f:
+                header = f.read(16)
+            if header.startswith(b'SQLite format 3'):
+                self._create_tables()
+                self._import_from_json_if_needed()
+        else:
+            self._create_tables()
+            self._import_from_json_if_needed()
 
     def _get_connection(self):
         conn = sqlite3.connect(self.filepath)
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA mmap_size = 268435456")
+        conn.execute("PRAGMA synchronous = NORMAL")
         return conn
 
     def _create_tables(self):
@@ -320,6 +332,50 @@ class StorageManager:
             return False
         finally:
             conn.close()
+
+    def encrypt_database(self, password):
+        """Encrypts the database file using the provided password."""
+        if not os.path.exists(self.filepath):
+            return False
+
+        try:
+            with open(self.filepath, 'rb') as f:
+                data = f.read()
+
+            # Check if already encrypted (not perfect but helpful)
+            if data.startswith(b'SQLite format 3'):
+                 em = EncryptionManager(password)
+                 encrypted_data = em.encrypt(data)
+
+                 with open(self.filepath, 'wb') as f:
+                     f.write(encrypted_data)
+                 audit_log("Database Encrypted")
+                 return True
+            return False
+        except Exception as e:
+            log.error(f"Encryption failed: {e}")
+            return False
+
+    def decrypt_database(self, password):
+        """Decrypts the database file using the provided password."""
+        if not os.path.exists(self.filepath):
+            return False
+
+        try:
+            with open(self.filepath, 'rb') as f:
+                encrypted_data = f.read()
+
+            if not encrypted_data.startswith(b'SQLite format 3'):
+                decrypted_data = EncryptionManager.decrypt(encrypted_data, password)
+
+                with open(self.filepath, 'wb') as f:
+                    f.write(decrypted_data)
+                audit_log("Database Decrypted")
+                return True
+            return False
+        except Exception as e:
+            log.error(f"Decryption failed: {e}")
+            raise e
 
     def restore_from_backup(self): # new method for restoring
         """Copies the backup file over the main database file."""

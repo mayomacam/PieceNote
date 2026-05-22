@@ -23,6 +23,7 @@ class PieceNoteMainWindow(QMainWindow):
 
         # A dictionary to keep track of open tabs: {note_id: editor_widget}
         self.open_tabs = {}
+        self.master_password = None
 
         try:
             self.storage = StorageManager()

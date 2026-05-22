@@ -21,10 +21,19 @@ class CommandRunner(QObject):
             self.finished.emit("")
             return
 
+        # SOC 2 Alignment: Command Validation (Whitelist)
+        allowed_commands = {'ls', 'nmap', 'ping', 'whoami', 'ps', 'cat', 'grep', 'find'}
+
         try:
             # Use shlex to safely split the command string into a list
             # and avoid shell=True to prevent command injection.
             args = shlex.split(self.command)
+
+            if not args or args[0] not in allowed_commands:
+                output = f"Error: Command '{args[0] if args else ''}' is not whitelisted for execution."
+                markdown = f"```bash\n$ {self.command}\n{output.strip()}\n```\n"
+                self.finished.emit(markdown)
+                return
 
             result = subprocess.run(
                 args,
