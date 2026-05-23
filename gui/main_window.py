@@ -47,7 +47,7 @@ class PieceNoteMainWindow(QMainWindow):
         self.setCentralWidget(self.splitter)
 
         # Setup the detailed, multi-part status bar
-        self.status_folder_label = QLabel("  No folder selected")
+        self.status_folder_label = QLabel(" No folder selected")
         self.status_note_label = QLabel("No note open")
         self.status_metrics_label = QLabel("")
         self.statusBar().addPermanentWidget(self.status_folder_label)

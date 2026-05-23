@@ -24,8 +24,8 @@ class SidebarPanel(QWidget):
         self.next_note_id = 1
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
 
         # Folder section
         folder_frame = QFrame()
@@ -246,9 +246,11 @@ class SidebarPanel(QWidget):
             self.request_status_message.emit("Note saved.", 2000)
 
     def _populate_folder_list(self):
+        self.folder_list.setUpdatesEnabled(False)
         self.folder_list.clear()
         for fid in sorted(self.folders.keys()):
             self._add_folder_item_to_list(fid, self.folders[fid]["name"])
+        self.folder_list.setUpdatesEnabled(True)
 
     def _add_folder_item_to_list(self, fid, name):
         count = len(self.folders[fid].get("notes", []))
@@ -257,6 +259,7 @@ class SidebarPanel(QWidget):
         self.folder_list.addItem(item)
 
     def _populate_note_list(self):
+        self.note_list.setUpdatesEnabled(False)
         self.note_list.clear()
         if self.current_folder in self.folders:
             for i, nid in enumerate(self.folders[self.current_folder]["notes"]):
@@ -265,6 +268,7 @@ class SidebarPanel(QWidget):
                     item.setData(Qt.UserRole, nid)
                     self.note_list.addItem(item)
         self._filter_notes()
+        self.note_list.setUpdatesEnabled(True)
 
     def update_folder_item_text(self, fid):
         for i in range(self.folder_list.count()):

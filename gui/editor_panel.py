@@ -18,6 +18,7 @@ except ImportError:
 
 
 import markdown
+import bleach
 from markdown.extensions.fenced_code import FencedCodeExtension
 from markdown.extensions.tables import TableExtension
 from pymdownx.tasklist import TasklistExtension
@@ -46,6 +47,8 @@ class EditorPanel(QWidget):
         self.current_note_id = None
         self._is_modified = False
         self.command_thread = None
+        self._last_rendered_text = None
+        self._cached_html = None
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -53,7 +56,8 @@ class EditorPanel(QWidget):
         self.preview_timer.timeout.connect(self._update_preview)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
         button_layout = QHBoxLayout()
         self.btn_save = QPushButton("💾 Save")
@@ -155,7 +159,7 @@ class EditorPanel(QWidget):
         self._is_modified = True
 
     def _save_note(self):
-        if self.current_note_id is not None:
+        if self.current_note_id is not None and self._is_modified:
             self.note_saved.emit(self.current_note_id, self.editor.toPlainText())
             self._is_modified = False
             if self.window():
@@ -167,6 +171,16 @@ class EditorPanel(QWidget):
 
     def _update_preview(self):
         raw_text = self.editor.toPlainText()
+
+        # Performance: HTML Caching
+        if raw_text == self._last_rendered_text and self._cached_html:
+            if WEB_ENGINE_AVAILABLE:
+                base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)
+                self.preview.setHtml(self._cached_html, baseUrl=base_url)
+            else:
+                self.preview.setPlainText(self._cached_html)
+            return
+
         css = HtmlFormatter(style='monokai').get_style_defs('.codehilite')
         js_script = (
             """<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>"""
@@ -185,6 +199,23 @@ class EditorPanel(QWidget):
         ]
         html_body = markdown.markdown(raw_text, extensions=md_extensions)
 
+        # Security: Sanitize HTML output to prevent XSS
+        allowed_tags = list(bleach.ALLOWED_TAGS) + [
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'code', 'span',
+            'table', 'thead', 'tbody', 'tr', 'th', 'td', 'br', 'hr', 'img',
+            'div', 'input', 'li', 'ul', 'ol', 'blockquote', 'del'
+        ]
+        allowed_attrs = bleach.ALLOWED_ATTRIBUTES.copy()
+        allowed_attrs.update({
+            'img': ['src', 'alt', 'title', 'width', 'height'],
+            'input': ['type', 'checked', 'disabled'],
+            'li': ['class'],
+            'span': ['class'],
+            'code': ['class'],
+            'div': ['class']
+        })
+
+        sanitized_html = bleach.clean(html_body, tags=allowed_tags, attributes=allowed_attrs)
 
         full_html = (
             f"""<html><head><meta charset="UTF-8">{js_script}"""
@@ -195,8 +226,13 @@ class EditorPanel(QWidget):
             f"""pre{{background-color:#3c3c3c;padding:10px;border-radius:5px;}}"""
             f"""table{{border-collapse:collapse;width:auto;}}"""
             f"""th,td{{border:1px solid #777;padding:6px 13px;}}"""
-            f"""</style></head><body>{html_body}</body></html>"""
+            f"""</style></head><body>{sanitized_html}</body></html>"""
         )
+
+        # Update cache
+        self._last_rendered_text = raw_text
+        self._cached_html = full_html
+
         if WEB_ENGINE_AVAILABLE:
             base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)
             self.preview.setHtml(full_html, baseUrl=base_url)
