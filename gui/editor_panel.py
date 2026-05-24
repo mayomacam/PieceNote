@@ -18,6 +18,7 @@ except ImportError:
 
 
 import markdown
+import bleach
 from markdown.extensions.fenced_code import FencedCodeExtension
 from markdown.extensions.tables import TableExtension
 from pymdownx.tasklist import TasklistExtension
@@ -92,6 +93,9 @@ class EditorPanel(QWidget):
         self.autosave_timer.timeout.connect(self._autosave)
         self.autosave_timer.start()
 
+        self._last_raw_text = ""
+        self._cached_html = ""
+
         self.clear_and_disable()
 
     def trigger_preview_update(self):
@@ -159,6 +163,8 @@ class EditorPanel(QWidget):
             self.note_saved.emit(self.current_note_id, self.editor.toPlainText())
             self._is_modified = False
             if self.window():
+                if hasattr(self.window(), 'storage'):
+                    self.window().storage.save_to_disk()
                 self.window().statusBar().showMessage("Note saved!", 2000)
 
     def _autosave(self):
@@ -167,6 +173,10 @@ class EditorPanel(QWidget):
 
     def _update_preview(self):
         raw_text = self.editor.toPlainText()
+        if raw_text == self._last_raw_text:
+            return
+
+        self._last_raw_text = raw_text
         css = HtmlFormatter(style='monokai').get_style_defs('.codehilite')
         js_script = (
             """<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>"""
@@ -185,6 +195,28 @@ class EditorPanel(QWidget):
         ]
         html_body = markdown.markdown(raw_text, extensions=md_extensions)
 
+        # Sanitize HTML for security (SOC 2 alignment)
+        allowed_tags = [
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'b', 'i', 'strong', 'em', 'tt',
+            'p', 'br', 'span', 'div', 'blockquote', 'code', 'hr',
+            'ul', 'ol', 'li', 'dd', 'dt',
+            'img',
+            'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+            'input' # Allowed for task lists
+        ]
+        allowed_attrs = {
+            'img': ['src', 'alt', 'title', 'width', 'height'],
+            'a': ['href', 'rel'],
+            'input': ['type', 'checked', 'disabled'], # For task lists
+            'span': ['class'],
+            'div': ['class'],
+            'code': ['class'],
+            'pre': ['class'],
+            'li': ['class'],
+        }
+
+        sanitized_html = bleach.clean(html_body, tags=allowed_tags, attributes=allowed_attrs)
 
         full_html = (
             f"""<html><head><meta charset="UTF-8">{js_script}"""
@@ -195,7 +227,7 @@ class EditorPanel(QWidget):
             f"""pre{{background-color:#3c3c3c;padding:10px;border-radius:5px;}}"""
             f"""table{{border-collapse:collapse;width:auto;}}"""
             f"""th,td{{border:1px solid #777;padding:6px 13px;}}"""
-            f"""</style></head><body>{html_body}</body></html>"""
+            f"""</style></head><body>{sanitized_html}</body></html>"""
         )
         if WEB_ENGINE_AVAILABLE:
             base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)

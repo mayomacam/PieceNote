@@ -16,7 +16,7 @@ from gui.help_dialogs import MarkdownGuideDialog
 
 
 class PieceNoteMainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, password):
         super().__init__()
         self.setWindowTitle("PieceNote - The Pentester's Companion V1.0")
         self.setGeometry(100, 100, 1200, 760)
@@ -25,7 +25,7 @@ class PieceNoteMainWindow(QMainWindow):
         self.open_tabs = {}
 
         try:
-            self.storage = StorageManager()
+            self.storage = StorageManager(password=password)
             self.sidebar = SidebarPanel(self.storage)
         except DatabaseCorruptError:
             self.handle_db_corruption()
@@ -44,7 +44,13 @@ class PieceNoteMainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.sidebar)
         self.splitter.addWidget(self.tab_widget)
-        self.setCentralWidget(self.splitter)
+
+        # Add some padding to the central widget for a more modern look
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(10, 10, 10, 10)
+        container_layout.addWidget(self.splitter)
+        self.setCentralWidget(container)
 
         # Setup the detailed, multi-part status bar
         self.status_folder_label = QLabel("  No folder selected")
@@ -76,7 +82,7 @@ class PieceNoteMainWindow(QMainWindow):
         autosave_ms = self.settings.get("autosave_interval_seconds", 30) * 1000
         for editor in self.open_tabs.values():
             editor.autosave_timer.setInterval(autosave_ms)
-        log.info(f"Live settings applied. New autosave interval: {autosave_ms}ms.")
+        audit_log("Settings Applied", f"New autosave interval: {autosave_ms}ms")
 
     def open_note_in_tab(self, note_id):
         if note_id in self.open_tabs:
@@ -165,7 +171,7 @@ class PieceNoteMainWindow(QMainWindow):
         file_menu.addAction("New Folder...", self.sidebar.create_folder, "Ctrl+Shift+N")
         file_menu.addAction("New Note", self.sidebar.create_note, "Ctrl+N")
         file_menu.addSeparator()
-        file_menu.addAction("Save All", self.sidebar.save_data_to_storage, "Ctrl+S")
+        file_menu.addAction("Save All", self.storage.save_to_disk, "Ctrl+S")
         file_menu.addSeparator()
         export_menu = file_menu.addMenu("Export")
         export_menu.addAction("Export Current Note...", self._export_current_note)
@@ -189,6 +195,7 @@ class PieceNoteMainWindow(QMainWindow):
         help_menu.addAction("About", self.show_about)
 
     def open_settings(self):
+        audit_log("Settings Menu Opened")
         dlg = SettingsDialog(self)
         dlg.exec()
 

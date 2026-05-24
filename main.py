@@ -5,7 +5,8 @@ from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QIcon
 
 from gui.main_window import PieceNoteMainWindow
-from utils.helpers import STYLE_SHEET_PATH, APP_ROOT, log
+from gui.password_dialog import PasswordDialog
+from utils.helpers import STYLE_SHEET_PATH, APP_ROOT, log, DB_FILE_PATH
 import os
 
 if __name__ == "__main__":
@@ -25,6 +26,22 @@ if __name__ == "__main__":
     except FileNotFoundError:
         log.warning(f"Stylesheet not found at: {STYLE_SHEET_PATH}")
 
-    window = PieceNoteMainWindow()
-    window.show()
+    # Master Password Authentication
+    mode = "login" if os.path.exists(DB_FILE_PATH) else "setup"
+    pwd_dlg = PasswordDialog(mode=mode)
+    if pwd_dlg.exec():
+        password = pwd_dlg.get_password()
+        if not password:
+            sys.exit(0)
+    else:
+        sys.exit(0)
+
+    try:
+        window = PieceNoteMainWindow(password=password)
+        window.show()
+    except Exception as e:
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(None, "Fatal Error", f"Failed to initialize application: {e}")
+        sys.exit(1)
+
     sys.exit(app.exec())

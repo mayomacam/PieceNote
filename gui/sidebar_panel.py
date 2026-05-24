@@ -24,8 +24,8 @@ class SidebarPanel(QWidget):
         self.next_note_id = 1
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(0, 0, 0, 0) # Managed by parent container now
+        main_layout.setSpacing(10)
 
         # Folder section
         folder_frame = QFrame()
@@ -205,6 +205,7 @@ class SidebarPanel(QWidget):
 
         fid = self.storage.create_folder(name)
         if fid:
+            audit_log("Folder Created", f"Name: {name} (ID: {fid})")
             self.folders[fid] = {"name": name, "notes": []}
             self.next_folder_id = max(self.next_folder_id, fid + 1)
             self._add_folder_item_to_list(fid, name)
@@ -224,6 +225,7 @@ class SidebarPanel(QWidget):
         nid = self.storage.create_note(self.current_folder, temp_title)
 
         if nid:
+            audit_log("Note Created", f"Title: {temp_title} (ID: {nid}) in Folder ID: {self.current_folder}")
             self.notes[nid] = {"title": temp_title}
             self.folders[self.current_folder]["notes"].append(nid)
             self.next_note_id = max(self.next_note_id, nid + 1)
@@ -246,9 +248,11 @@ class SidebarPanel(QWidget):
             self.request_status_message.emit("Note saved.", 2000)
 
     def _populate_folder_list(self):
+        self.folder_list.setUpdatesEnabled(False)
         self.folder_list.clear()
         for fid in sorted(self.folders.keys()):
             self._add_folder_item_to_list(fid, self.folders[fid]["name"])
+        self.folder_list.setUpdatesEnabled(True)
 
     def _add_folder_item_to_list(self, fid, name):
         count = len(self.folders[fid].get("notes", []))
@@ -257,6 +261,7 @@ class SidebarPanel(QWidget):
         self.folder_list.addItem(item)
 
     def _populate_note_list(self):
+        self.note_list.setUpdatesEnabled(False)
         self.note_list.clear()
         if self.current_folder in self.folders:
             for i, nid in enumerate(self.folders[self.current_folder]["notes"]):
@@ -265,6 +270,7 @@ class SidebarPanel(QWidget):
                     item.setData(Qt.UserRole, nid)
                     self.note_list.addItem(item)
         self._filter_notes()
+        self.note_list.setUpdatesEnabled(True)
 
     def update_folder_item_text(self, fid):
         for i in range(self.folder_list.count()):
@@ -301,6 +307,7 @@ class SidebarPanel(QWidget):
         new_name, ok = QInputDialog.getText(self, "Rename Folder", "New name:", text=old_name)
         if ok and new_name.strip() and new_name != old_name:
             if self.storage.rename_folder(fid, new_name):
+                audit_log("Folder Renamed", f"Old: {old_name} -> New: {new_name} (ID: {fid})")
                 self.folders[fid]["name"] = new_name
                 self.update_folder_item_text(fid)
                 self.request_status_message.emit("Folder renamed.", 2000)
@@ -316,6 +323,7 @@ class SidebarPanel(QWidget):
         new_title, ok = QInputDialog.getText(self, "Rename Note", "New title:", text=old_title)
         if ok and new_title.strip() and new_title != old_title:
             if self.storage.update_note_title(nid, new_title):
+                audit_log("Note Renamed", f"Old: {old_title} -> New: {new_title} (ID: {nid})")
                 self.notes[nid]["title"] = new_title
                 self._populate_note_list()
                 self.request_status_message.emit("Note renamed.", 2000)

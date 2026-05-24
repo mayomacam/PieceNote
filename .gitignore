@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.bak
+app.log
+PieceNote.sqlite
+backups/
+venv/
+.env
+.vscode/
+.idea/
