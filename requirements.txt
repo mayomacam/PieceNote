@@ -8,3 +8,7 @@ pymdown-extensions
 
 # PDF Export Functionality
 xhtml2pdf
+
+# Security
+cryptography
+bleach

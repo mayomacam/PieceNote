@@ -126,7 +126,12 @@ class SidebarPanel(QWidget):
             self.search_bar.clear()
             self.note_list.setEnabled(True)
             self.search_bar.setEnabled(True)
-            self._populate_note_list()
+
+            self.note_list.setUpdatesEnabled(False)
+            try:
+                self._populate_note_list()
+            finally:
+                self.note_list.setUpdatesEnabled(True)
         else:
             self.current_folder = None
             self.note_list.clear()
@@ -246,9 +251,13 @@ class SidebarPanel(QWidget):
             self.request_status_message.emit("Note saved.", 2000)
 
     def _populate_folder_list(self):
-        self.folder_list.clear()
-        for fid in sorted(self.folders.keys()):
-            self._add_folder_item_to_list(fid, self.folders[fid]["name"])
+        self.folder_list.setUpdatesEnabled(False)
+        try:
+            self.folder_list.clear()
+            for fid in sorted(self.folders.keys()):
+                self._add_folder_item_to_list(fid, self.folders[fid]["name"])
+        finally:
+            self.folder_list.setUpdatesEnabled(True)
 
     def _add_folder_item_to_list(self, fid, name):
         count = len(self.folders[fid].get("notes", []))

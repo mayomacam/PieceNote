@@ -16,7 +16,7 @@ from gui.help_dialogs import MarkdownGuideDialog
 
 
 class PieceNoteMainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, password=None):
         super().__init__()
         self.setWindowTitle("PieceNote - The Pentester's Companion V1.0")
         self.setGeometry(100, 100, 1200, 760)
@@ -25,7 +25,7 @@ class PieceNoteMainWindow(QMainWindow):
         self.open_tabs = {}
 
         try:
-            self.storage = StorageManager()
+            self.storage = StorageManager(password=password)
             self.sidebar = SidebarPanel(self.storage)
         except DatabaseCorruptError:
             self.handle_db_corruption()
