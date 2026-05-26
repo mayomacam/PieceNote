@@ -1,6 +1,9 @@
 import sqlite3
 import json
 import os
+from utils.helpers import DB_FILE_PATH, BACKUP_LOCATION, JSON_IMPORT_PATH, get_settings, log
+from utils.encryption import EncryptionManager
+from utils.logger import audit_log
 import shutil
 import base64
 from cryptography.hazmat.primitives import hashes
@@ -39,69 +42,97 @@ class DatabaseCorruptError(Exception):
     pass
 
 class StorageManager:
-    def __init__(self, filepath=DB_FILE_PATH):
+    def __init__(self, filepath=DB_FILE_PATH, password=None):
         self.filepath = filepath
+        self.password = password
         self.backup_path = os.path.join(BACKUP_LOCATION, f"{os.path.basename(filepath)}.bak")
-        self.encryption = EncryptionManager()
 
-        # In-memory database for runtime performance and security
-        self.mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
-        self.mem_conn.execute("PRAGMA foreign_keys = ON")
-        self.mem_conn.execute("PRAGMA synchronous = NORMAL")
-        self.mem_conn.execute("PRAGMA mmap_size = 30000000000")
+        # We'll maintain an in-memory database
+        self._in_memory_conn = None
 
-        if os.path.exists(self.filepath):
-            self._initialize_from_disk()
+        if password:
+            self._load_encrypted_to_memory(password)
         else:
-            self._create_tables()
-            self._save_to_disk()
+            self._load_unencrypted_to_memory()
 
+    def _load_encrypted_to_memory(self, password):
+        """Loads and decrypts the database file into an in-memory connection."""
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, 'rb') as f:
+                    encrypted_data = f.read()
+
+                if encrypted_data.startswith(b'SQLite format 3'):
+                    # It's not encrypted, just load it normally
+                    audit_log("Warning: Loading unencrypted database even though password provided.")
+                    self._load_unencrypted_to_memory()
+                    return
+
+                decrypted_data = EncryptionManager.decrypt(encrypted_data, password)
+
+                self._in_memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
+                self._in_memory_conn.deserialize(decrypted_data)
+                audit_log("Database Decrypted to Memory")
+            except Exception as e:
+                log.error(f"Failed to load encrypted database: {e}")
+                raise e
+        else:
+            # New database
+            self._load_unencrypted_to_memory()
+
+    def _load_unencrypted_to_memory(self):
+        """Loads unencrypted database into memory, or creates a new one in memory."""
+        self._in_memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, 'rb') as f:
+                    data = f.read()
+                if data.startswith(b'SQLite format 3'):
+                    self._in_memory_conn.deserialize(data)
+                    audit_log("Unencrypted Database Loaded to Memory")
+                else:
+                    # It might be encrypted, but we don't have a password or it's just corrupt
+                    log.error("Database file exists but is not a valid SQLite file and no password was provided or decryption failed.")
+                    # Fallback to empty if we can't do anything else
+            except Exception as e:
+                log.error(f"Failed to load existing database: {e}")
+
+        self._create_tables()
         self._import_from_json_if_needed()
 
-    def _initialize_from_disk(self):
-        """Attempts to load encrypted data, or migrate plain SQLite if found."""
-        try:
-            with open(self.filepath, "rb") as f:
-                header = f.read(16)
-                f.seek(0)
-                data = f.read()
+    def save_to_disk(self):
+        """Serializes the in-memory database and saves it to disk (encrypted if password is set)."""
+        if not self._in_memory_conn:
+            return False
 
-            if header.startswith(b"SQLite format 3"):
-                log.info("Detected plain SQLite database. Migrating to encrypted format...")
-                self._migrate_plain_db(data)
+        try:
+            data = self._in_memory_conn.serialize()
+
+            if self.password:
+                em = EncryptionManager(self.password)
+                data_to_save = em.encrypt(data)
+                audit_log("Saving Encrypted Database to Disk")
             else:
-                self._load_encrypted_data(data)
-        except Exception as e:
-            log.error(f"Failed to initialize database: {e}")
-            raise DatabaseCorruptError(f"Database initialization failed: {e}")
+                data_to_save = data
+                audit_log("Saving Unencrypted Database to Disk")
 
-    def _migrate_plain_db(self, plain_data):
-        """Loads plain data and immediately saves it encrypted."""
-        try:
-            self.mem_conn.deserialize(plain_data)
-            # Ensure tables exist (especially if migrating from a very old version)
-            self._create_tables()
-            self._save_to_disk()
-            audit_log("Database Migration", "Successfully migrated plain SQLite to encrypted format.")
+            # atomic write with backup
+            self._create_backup(force=True)
+            with open(self.filepath, 'wb') as f:
+                f.write(data_to_save)
+            return True
         except Exception as e:
-            log.error(f"Migration failed: {e}")
-            raise DatabaseCorruptError("Could not migrate plain database.")
-
-    def _load_encrypted_data(self, encrypted_data):
-        """Decrypts and loads data into memory."""
-        try:
-            decrypted_data = self.encryption.decrypt(encrypted_data)
-            self.mem_conn.deserialize(decrypted_data)
-            audit_log("Database Load", "Decrypted and loaded database into memory.")
-        except InvalidToken:
-            log.error("Invalid encryption key or corrupted data.")
-            raise DatabaseCorruptError("Could not decrypt database. Incorrect password or corruption.")
-        except Exception as e:
-            log.error(f"Decryption/Load error: {e}")
-            raise DatabaseCorruptError(f"Load error: {e}")
+            log.error(f"Failed to save database to disk: {e}")
+            return False
 
     def _get_connection(self):
-        return self.mem_conn
+        """Returns the in-memory connection."""
+        conn = self._in_memory_conn
+        conn.execute("PRAGMA foreign_keys = ON")
+        # journal_mode = WAL doesn't apply to in-memory in the same way, but doesn't hurt.
+        # synchronous = NORMAL/OFF is faster for in-memory
+        conn.execute("PRAGMA synchronous = OFF")
+        return conn
 
     def _create_tables(self):
         conn = self._get_connection()
@@ -178,20 +209,57 @@ class StorageManager:
         cursor.execute("SELECT folder_id, name FROM folders")
         folders_data = {fid: {"name": name, "notes": []} for fid, name in cursor.fetchall()}
 
-        cursor.execute("SELECT note_id, title, folder_id FROM notes ORDER BY sort_order ASC")
-        notes_data = {}
-        for nid, title, fid in cursor.fetchall():
-            notes_data[nid] = {"title": title}
-            if fid in folders_data:
-                folders_data[fid]["notes"].append(nid)
+             # Triggers to keep FTS table in sync with notes table
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+                    INSERT INTO notes_fts(rowid, title, body) VALUES (new.note_id, new.title, new.body);
+                END
+            """)
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+                    INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.note_id, old.title, old.body);
+                END
+            """)
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+                    INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.note_id, old.title, old.body);
+                    INSERT INTO notes_fts(rowid, title, body) VALUES (new.note_id, new.title, new.body);
+                END
+            """)
+            conn.commit()
+        except Exception as e:
+             log.error(f"Failed to create tables: {e}")
 
-        next_folder_id = (cursor.execute("SELECT MAX(folder_id) FROM folders").fetchone()[0] or 0) + 1
-        next_note_id = (cursor.execute("SELECT MAX(note_id) FROM notes").fetchone()[0] or 0) + 1
+    def load(self):
+        """
+        Loads metadata for all folders and notes.
+        Note bodies are NOT loaded here for performance (lazy loading).
+        """
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT folder_id, name FROM folders")
+            folders_data = {fid: {"name": name, "notes": []} for fid, name in cursor.fetchall()}
 
-        return {
-            "folders": folders_data, "notes": notes_data,
-            "next_folder_id": next_folder_id, "next_note_id": next_note_id,
-        }
+            # We omit 'body' here to save memory and time
+            cursor.execute("SELECT note_id, title, folder_id FROM notes ORDER BY sort_order ASC")
+            notes_data = {}
+            for nid, title, fid in cursor.fetchall():
+                notes_data[nid] = {"title": title}
+                if fid in folders_data:
+                    folders_data[fid]["notes"].append(nid)
+
+            next_folder_id = (cursor.execute("SELECT MAX(folder_id) FROM folders").fetchone()[0] or 0) + 1
+            next_note_id = (cursor.execute("SELECT MAX(note_id) FROM notes").fetchone()[0] or 0) + 1
+
+            return {
+                "folders": folders_data, "notes": notes_data,
+                "next_folder_id": next_folder_id, "next_note_id": next_note_id,
+            }
+        except sqlite3.DatabaseError as e:
+            # If the DB is corrupt, raise our custom error
+            log.error(f"Database error on load: {e}")
+            raise DatabaseCorruptError("The database file appears to be corrupt.")
 
     _backup_done_this_session = False
 
@@ -211,12 +279,13 @@ class StorageManager:
         return True
 
     def update_note_body(self, note_id, body):
+        """Updates the body of a specific note."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("UPDATE notes SET body = ? WHERE note_id = ?", (body, note_id))
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return True
         except Exception as e:
             log.error(f"Failed to update note body: {e}")
@@ -228,7 +297,7 @@ class StorageManager:
             cursor = conn.cursor()
             cursor.execute("UPDATE notes SET title = ? WHERE note_id = ?", (title, note_id))
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return True
         except Exception as e:
             log.error(f"Failed to update note title: {e}")
@@ -255,23 +324,26 @@ class StorageManager:
                 )
                 new_id = note_id
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return new_id
         except Exception as e:
             log.error(f"Failed to create note: {e}")
             return None
 
+    def delete_note(self, note_id):
+        """Deletes a specific note."""
+        return self.delete_notes([note_id])
+
     def delete_notes(self, note_ids):
         if not note_ids:
             return True
-        self._create_backup(force=True)
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             placeholders = ",".join(["?"] * len(note_ids))
             cursor.execute(f"DELETE FROM notes WHERE note_id IN ({placeholders})", note_ids)
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return True
         except Exception as e:
             log.error(f"Failed to delete notes: {e}")
@@ -288,7 +360,7 @@ class StorageManager:
                 cursor.execute("INSERT INTO folders (folder_id, name) VALUES (?, ?)", (folder_id, name))
                 new_id = folder_id
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return new_id
         except Exception as e:
             log.error(f"Failed to create folder: {e}")
@@ -300,20 +372,20 @@ class StorageManager:
             cursor = conn.cursor()
             cursor.execute("UPDATE folders SET name = ? WHERE folder_id = ?", (name, folder_id))
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return True
         except Exception as e:
             log.error(f"Failed to rename folder: {e}")
             return False
 
     def delete_folder(self, folder_id):
-        self._create_backup(force=True)
+        """Deletes a folder and all its notes (CASCADE)."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM folders WHERE folder_id = ?", (folder_id,))
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return True
         except Exception as e:
             log.error(f"Failed to delete folder: {e}")
@@ -330,19 +402,75 @@ class StorageManager:
                     (i, note_id, folder_id)
                 )
             conn.commit()
-            self._save_to_disk()
+            self.save_to_disk()
             return True
         except Exception as e:
             log.error(f"Failed to reorder notes: {e}")
             conn.rollback()
             return False
 
+    def save_full_import(self, data):
+        """
+        Used for initial import or full sync.
+        Wipes the database and replaces it with the provided data.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN")
+            cursor.execute("DELETE FROM notes")
+            cursor.execute("DELETE FROM folders")
+
+            for folder_id, folder_data in data.get("folders", {}).items():
+                cursor.execute("INSERT INTO folders (folder_id, name) VALUES (?, ?)", (folder_id, folder_data["name"]))
+                for i, note_id in enumerate(folder_data.get("notes", [])):
+                    note_data = data["notes"].get(note_id)
+                    if note_data:
+                        cursor.execute(
+                            "INSERT INTO notes (note_id, title, body, folder_id, sort_order) VALUES (?, ?, ?, ?, ?)",
+                            (note_id, note_data["title"], note_data.get("body", ""), folder_id, i)
+                        )
+            conn.commit()
+            return True
+        except Exception as e:
+            log.error(f"Error during full data save: {e}")
+            conn.rollback()
+            return False
+
+    def restore_from_backup(self): # new method for restoring
+        """Copies the backup file over the main database file."""
+        if os.path.exists(self.backup_path):
+            try:
+                # We need to make sure the in-memory is also updated if we restore
+                with open(self.backup_path, 'rb') as f:
+                    data = f.read()
+
+                # If backup is encrypted, this will fail if we don't have password.
+                # Assuming backup matches current encryption state.
+                if self.password:
+                     data = EncryptionManager.decrypt(data, self.password)
+
+                if data.startswith(b'SQLite format 3'):
+                     self._in_memory_conn.deserialize(data)
+                     audit_log("Restored Database from Backup into Memory")
+
+                shutil.copy2(self.backup_path, self.filepath)
+                return True
+            except Exception as e:
+                log.error(f"Failed to restore from backup: {e}")
+                return False
+        return False
+
     def get_note_body(self, note_id):
         conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT body FROM notes WHERE note_id = ?", (note_id,))
-        result = cursor.fetchone()
-        return result[0] if result else ""
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT body FROM notes WHERE note_id = ?", (note_id,))
+            result = cursor.fetchone()
+            return result[0] if result else ""
+        except Exception as e:
+            log.error(f"Failed to get note body: {e}")
+            return ""
 
     def search_notes(self, query):
         if not query:
@@ -385,11 +513,22 @@ class StorageManager:
     def restore_from_backup(self):
         if os.path.exists(self.backup_path):
             try:
-                shutil.copy2(self.backup_path, self.filepath)
-                return True
-            except IOError:
-                return False
-        return False
+                search_term = f"%{query}%"
+                cursor.execute("""
+                    SELECT n.note_id, n.title, f.folder_id, f.name
+                    FROM notes n
+                    JOIN folders f ON n.folder_id = f.folder_id
+                    WHERE n.title LIKE ? OR n.body LIKE ?
+                """, (search_term, search_term))
+                results = []
+                for note_id, title, folder_id, folder_name in cursor.fetchall():
+                    results.append({
+                        "note_id": note_id, "title": title,
+                        "folder_id": folder_id, "folder_name": folder_name
+                    })
+                return results
+            except Exception:
+                return []
 
     def _import_from_json_if_needed(self):
         json_path = JSON_IMPORT_PATH

@@ -26,6 +26,9 @@ class CommandRunner(QObject):
             self.finished.emit("")
             return
 
+        # SOC 2 Alignment: Command Validation (Whitelist)
+        allowed_commands = {'ls', 'nmap', 'ping', 'whoami', 'ps', 'cat', 'grep', 'find'}
+
         try:
             args = shlex.split(self.command)
             if not args:
@@ -37,21 +40,22 @@ class CommandRunner(QObject):
             if base_cmd.endswith('.exe'):
                 base_cmd = base_cmd[:-4]
 
-            if base_cmd not in self.WHITELIST:
-                audit_log("Command Blocked (Security)", f"Command: {self.command}")
-                output = f"Security Error: Command '{base_cmd}' is not in the whitelist."
-            else:
-                audit_log("Command Executed", f"Command: {self.command}")
-                result = subprocess.run(
-                    args,
-                    shell=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                output = result.stdout
-                if result.stderr:
-                    output += f"\n--- STDERR ---\n{result.stderr}"
+            if not args or args[0] not in allowed_commands:
+                output = f"Error: Command '{args[0] if args else ''}' is not whitelisted for execution."
+                markdown = f"```bash\n$ {self.command}\n{output.strip()}\n```\n"
+                self.finished.emit(markdown)
+                return
+
+            result = subprocess.run(
+                args,
+                shell=False,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            output = result.stdout
+            if result.stderr:
+                output += f"\n--- STDERR ---\n{result.stderr}"
         except subprocess.TimeoutExpired:
             output = "Error: Command timed out after 60 seconds."
         except FileNotFoundError:

@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFrame, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLabel, QInputDialog, QMessageBox, QAbstractItemView, QMenu, QLineEdit
 )
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, Signal
 from utils.helpers import SETTINGS, log
 from utils.logger import audit_log
@@ -39,9 +40,12 @@ class SidebarPanel(QWidget):
         folder_header.addWidget(folder_label)
         folder_header.addStretch()
 
-        self.btn_folder_new = QPushButton("＋")
-        self.btn_folder_rename = QPushButton("✏")
-        self.btn_folder_del = QPushButton("🗑")
+        self.btn_folder_new = QPushButton()
+        self.btn_folder_new.setIcon(QIcon("assets/icons/folder.svg"))
+        self.btn_folder_rename = QPushButton()
+        self.btn_folder_rename.setIcon(QIcon("assets/icons/actions/rename.svg"))
+        self.btn_folder_del = QPushButton()
+        self.btn_folder_del.setIcon(QIcon("assets/icons/actions/delete.svg"))
         for btn in [self.btn_folder_new, self.btn_folder_rename, self.btn_folder_del]:
             btn.setFixedWidth(28)
             btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
@@ -64,9 +68,12 @@ class SidebarPanel(QWidget):
         note_header.addWidget(note_label)
         note_header.addStretch()
 
-        self.btn_note_new = QPushButton("＋")
-        self.btn_note_rename = QPushButton("✏")
-        self.btn_note_del = QPushButton("🗑")
+        self.btn_note_new = QPushButton()
+        self.btn_note_new.setIcon(QIcon("assets/icons/note.svg"))
+        self.btn_note_rename = QPushButton()
+        self.btn_note_rename.setIcon(QIcon("assets/icons/actions/rename.svg"))
+        self.btn_note_del = QPushButton()
+        self.btn_note_del.setIcon(QIcon("assets/icons/actions/delete.svg"))
         for btn in [self.btn_note_new, self.btn_note_rename, self.btn_note_del]:
             btn.setFixedWidth(28)
             btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")

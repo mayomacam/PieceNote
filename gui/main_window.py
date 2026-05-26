@@ -16,16 +16,17 @@ from gui.help_dialogs import MarkdownGuideDialog
 
 
 class PieceNoteMainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, storage=None):
         super().__init__()
         self.setWindowTitle("PieceNote - The Pentester's Companion V1.0")
         self.setGeometry(100, 100, 1200, 760)
 
         # A dictionary to keep track of open tabs: {note_id: editor_widget}
         self.open_tabs = {}
+        self.master_password = None
 
         try:
-            self.storage = StorageManager()
+            self.storage = storage if storage else StorageManager()
             self.sidebar = SidebarPanel(self.storage)
         except DatabaseCorruptError:
             self.handle_db_corruption()
@@ -151,7 +152,7 @@ class PieceNoteMainWindow(QMainWindow):
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            if StorageManager().restore_from_backup():
+            if StorageManager(password=self.master_password).restore_from_backup():
                 audit_log("Database Restored from Backup")
                 QMessageBox.information(self, "Success", "Database restored. Application will restart.")
             else:
