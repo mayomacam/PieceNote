@@ -21,6 +21,7 @@ class StorageManager:
         self.password = password
         self.backup_path = os.path.join(BACKUP_LOCATION, f"{os.path.basename(filepath)}.bak")
         self._cached_key = None
+        self._current_salt = None
 
         # In-memory database for runtime operations
         self.conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -32,17 +33,20 @@ class StorageManager:
         self._import_from_json_if_needed()
 
     def _apply_performance_pragmas(self, conn):
+        """Optimizes SQLite for in-memory operation and security."""
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA mmap_size = 30000000000") # 30GB to allow mapping entire DB if needed
+        # For :memory: databases, journal_mode and synchronous have limited impact,
+        # but we set them to sensible defaults for consistency and future-proofing.
+        conn.execute("PRAGMA journal_mode = MEMORY")
+        conn.execute("PRAGMA synchronous = OFF")
+        # mmap_size is not applicable to :memory: but kept as a reminder for file-based
+        # conn.execute("PRAGMA mmap_size = 2147483648")
 
-    def _get_encryption_key(self, salt=None):
-        if self._cached_key:
+    def _get_encryption_key(self, salt):
+        """Derives a Fernet key from the password and salt using PBKDF2."""
+        if self._cached_key and self._current_salt == salt:
             return self._cached_key
 
-        if salt is None:
-            salt = b'piece_note_fixed_salt' # In a real SOC 2 app, salt should be stored per-user
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
@@ -50,6 +54,7 @@ class StorageManager:
             iterations=600000,
         )
         self._cached_key = base64.urlsafe_b64encode(kdf.derive(self.password.encode()))
+        self._current_salt = salt
         return self._cached_key
 
     def _load_from_disk(self):
@@ -60,10 +65,9 @@ class StorageManager:
             with open(self.filepath, "rb") as f:
                 data = f.read()
 
-            # Check if it's a plain SQLite file
+            # Check if it's a plain SQLite file (Migration path)
             if data.startswith(b"SQLite format 3"):
                 log.info("Detected plaintext SQLite database. Migrating to encrypted format.")
-                self.conn = sqlite3.connect(":memory:", check_same_thread=False)
                 temp_conn = sqlite3.connect(self.filepath)
                 temp_conn.backup(self.conn)
                 temp_conn.close()
@@ -71,9 +75,15 @@ class StorageManager:
                 self.save_to_disk()
                 return
 
-            # Attempt to decrypt
-            f_fernet = Fernet(self._get_encryption_key())
-            decrypted_data = f_fernet.decrypt(data)
+            if len(data) < 16:
+                raise DatabaseCorruptError("Database file is too small to be valid.")
+
+            # File format: [16 bytes SALT] + [Fernet Token]
+            salt = data[:16]
+            encrypted_payload = data[16:]
+
+            f_fernet = Fernet(self._get_encryption_key(salt))
+            decrypted_data = f_fernet.decrypt(encrypted_payload)
             self.conn.deserialize(decrypted_data)
             log.info("Encrypted database loaded successfully.")
 
@@ -82,19 +92,23 @@ class StorageManager:
             raise DatabaseCorruptError(f"Database loading failed: {e}")
 
     def save_to_disk(self, force=False):
-        """Serializes the in-memory database and saves it encrypted to disk."""
+        """Serializes the in-memory database and saves it encrypted to disk with a random salt."""
         if not self._is_dirty and not force:
             return True
 
         try:
             self._create_backup()
             serialized_data = self.conn.serialize()
-            f_fernet = Fernet(self._get_encryption_key())
+
+            # Use a fresh salt for every save to ensure SOC 2 grade cryptographic diversity
+            salt = os.urandom(16)
+            f_fernet = Fernet(self._get_encryption_key(salt))
             encrypted_data = f_fernet.encrypt(serialized_data)
 
             with open(self.filepath, "wb") as f:
-                f.write(encrypted_data)
-            log.info("Database saved securely to disk.")
+                f.write(salt + encrypted_data)
+
+            log.info("Database saved securely to disk with unique salt.")
             self._is_dirty = False
             return True
         except Exception as e:
