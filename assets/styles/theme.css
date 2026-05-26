@@ -1,4 +1,20 @@
-/* assets/styles/theme.css - Modern Polished Dark Theme */
+/* assets/styles/theme.css - Professional Modern Dark Theme */
+
+:root {
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #252526;
+    --bg-tertiary: #2d2d2d;
+    --bg-input: #3c3c3c;
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --text-muted: #888888;
+    --accent: #007acc;
+    --accent-hover: #1f8ad2;
+    --border: #3e3e3e;
+    --selection: #264f78;
+    --error: #f44336;
+    --radius: 6px;
+}
 
 :root {
     --bg-main: #1a1a1a;

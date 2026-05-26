@@ -212,6 +212,7 @@ class SidebarPanel(QWidget):
 
         fid = self.storage.create_folder(name)
         if fid:
+            audit_log("Folder Created", f"Name: {name} (ID: {fid})")
             self.folders[fid] = {"name": name, "notes": []}
             self.next_folder_id = max(self.next_folder_id, fid + 1)
             self._add_folder_item_to_list(fid, name)
@@ -231,6 +232,7 @@ class SidebarPanel(QWidget):
         nid = self.storage.create_note(self.current_folder, temp_title)
 
         if nid:
+            audit_log("Note Created", f"Title: {temp_title} (ID: {nid}) in Folder ID: {self.current_folder}")
             self.notes[nid] = {"title": temp_title}
             self.folders[self.current_folder]["notes"].append(nid)
             self.next_note_id = max(self.next_note_id, nid + 1)
@@ -312,6 +314,7 @@ class SidebarPanel(QWidget):
         new_name, ok = QInputDialog.getText(self, "Rename Folder", "New name:", text=old_name)
         if ok and new_name.strip() and new_name != old_name:
             if self.storage.rename_folder(fid, new_name):
+                audit_log("Folder Renamed", f"Old: {old_name} -> New: {new_name} (ID: {fid})")
                 self.folders[fid]["name"] = new_name
                 self.update_folder_item_text(fid)
                 self.request_status_message.emit("Folder renamed.", 2000)
@@ -327,6 +330,7 @@ class SidebarPanel(QWidget):
         new_title, ok = QInputDialog.getText(self, "Rename Note", "New title:", text=old_title)
         if ok and new_title.strip() and new_title != old_title:
             if self.storage.update_note_title(nid, new_title):
+                audit_log("Note Renamed", f"Old: {old_title} -> New: {new_title} (ID: {nid})")
                 self.notes[nid]["title"] = new_title
                 self._populate_note_list()
                 self.request_status_message.emit("Note renamed.", 2000)

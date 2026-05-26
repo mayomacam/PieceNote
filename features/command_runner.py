@@ -1,5 +1,6 @@
 import subprocess
 import shlex
+import re
 from PySide6.QtCore import QObject, Signal
 from utils.logger import audit_log
 
@@ -16,9 +17,36 @@ class CommandRunner(QObject):
         'netstat', 'nslookup', 'traceroute', 'tracert', 'df', 'free', 'uptime'
     }
 
+    # Whitelist of allowed base commands for pentesting
+    WHITELIST = {
+        'nmap', 'whoami', 'ls', 'pwd', 'ping', 'netstat',
+        'ipconfig', 'ifconfig', 'id', 'uname', 'hostname',
+        'cat', 'grep', 'head', 'tail', 'df', 'free', 'uptime'
+    }
+
     def __init__(self, command):
         super().__init__()
-        self.command = command
+        self.command = command.strip()
+
+    def is_safe(self, args):
+        """Validates the command against the whitelist and checks for suspicious patterns."""
+        if not args:
+            return False
+
+        base_cmd = args[0]
+        if base_cmd not in self.WHITELIST:
+            audit_log("Security Violation", f"Command rejected (not in whitelist): {base_cmd}")
+            return False
+
+        # Disallow command chaining and redirection to prevent shell injection
+        # shlex already handles many cases, but we want to be extra strict.
+        forbidden_chars = [';', '&', '|', '>', '<', '`', '$', '(', ')']
+        for arg in args:
+            if any(char in arg for char in forbidden_chars):
+                audit_log("Security Violation", f"Command rejected (suspicious characters): {self.command}")
+                return False
+
+        return True
 
     def run(self):
         """Executes the command and emits the result."""
@@ -46,9 +74,13 @@ class CommandRunner(QObject):
                 self.finished.emit(markdown)
                 return
 
+            if not self.is_safe(args):
+                self.finished.emit(f"```bash\n$ {self.command}\nError: Command rejected for security reasons.\n```\n")
+                return
+
             result = subprocess.run(
                 args,
-                shell=False,
+                shell=False, # Crucial: shell=False prevents most injection
                 capture_output=True,
                 text=True,
                 timeout=60

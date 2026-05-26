@@ -231,17 +231,11 @@ class StorageManager:
              log.error(f"Failed to create tables: {e}")
 
     def load(self):
-        """
-        Loads metadata for all folders and notes.
-        Note bodies are NOT loaded here for performance (lazy loading).
-        """
         try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("SELECT folder_id, name FROM folders")
             folders_data = {fid: {"name": name, "notes": []} for fid, name in cursor.fetchall()}
 
-            # We omit 'body' here to save memory and time
             cursor.execute("SELECT note_id, title, folder_id FROM notes ORDER BY sort_order ASC")
             notes_data = {}
             for nid, title, fid in cursor.fetchall():
@@ -257,7 +251,6 @@ class StorageManager:
                 "next_folder_id": next_folder_id, "next_note_id": next_note_id,
             }
         except sqlite3.DatabaseError as e:
-            # If the DB is corrupt, raise our custom error
             log.error(f"Database error on load: {e}")
             raise DatabaseCorruptError("The database file appears to be corrupt.")
 
@@ -282,7 +275,7 @@ class StorageManager:
         """Updates the body of a specific note."""
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("UPDATE notes SET body = ? WHERE note_id = ?", (body, note_id))
             conn.commit()
             self.save_to_disk()
@@ -294,7 +287,7 @@ class StorageManager:
     def update_note_title(self, note_id, title):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("UPDATE notes SET title = ? WHERE note_id = ?", (title, note_id))
             conn.commit()
             self.save_to_disk()
@@ -331,7 +324,6 @@ class StorageManager:
             return None
 
     def delete_note(self, note_id):
-        """Deletes a specific note."""
         return self.delete_notes([note_id])
 
     def delete_notes(self, note_ids):
@@ -339,7 +331,7 @@ class StorageManager:
             return True
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             placeholders = ",".join(["?"] * len(note_ids))
             cursor.execute(f"DELETE FROM notes WHERE note_id IN ({placeholders})", note_ids)
             conn.commit()
@@ -352,7 +344,7 @@ class StorageManager:
     def create_folder(self, name, folder_id=None):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             if folder_id is None:
                 cursor.execute("INSERT INTO folders (name) VALUES (?)", (name,))
                 new_id = cursor.lastrowid
@@ -369,7 +361,7 @@ class StorageManager:
     def rename_folder(self, folder_id, name):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("UPDATE folders SET name = ? WHERE folder_id = ?", (name, folder_id))
             conn.commit()
             self.save_to_disk()
@@ -382,7 +374,7 @@ class StorageManager:
         """Deletes a folder and all its notes (CASCADE)."""
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("DELETE FROM folders WHERE folder_id = ?", (folder_id,))
             conn.commit()
             self.save_to_disk()
@@ -394,7 +386,7 @@ class StorageManager:
     def reorder_notes(self, folder_id, note_ids):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("BEGIN")
             for i, note_id in enumerate(note_ids):
                 cursor.execute(
@@ -406,7 +398,7 @@ class StorageManager:
             return True
         except Exception as e:
             log.error(f"Failed to reorder notes: {e}")
-            conn.rollback()
+            self.conn.rollback()
             return False
 
     def save_full_import(self, data):
@@ -416,7 +408,7 @@ class StorageManager:
         """
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("BEGIN")
             cursor.execute("DELETE FROM notes")
             cursor.execute("DELETE FROM folders")
@@ -430,15 +422,15 @@ class StorageManager:
                             "INSERT INTO notes (note_id, title, body, folder_id, sort_order) VALUES (?, ?, ?, ?, ?)",
                             (note_id, note_data["title"], note_data.get("body", ""), folder_id, i)
                         )
-            conn.commit()
+            self.conn.commit()
+            self._is_dirty = True
             return True
         except Exception as e:
             log.error(f"Error during full data save: {e}")
-            conn.rollback()
+            self.conn.rollback()
             return False
 
-    def restore_from_backup(self): # new method for restoring
-        """Copies the backup file over the main database file."""
+    def restore_from_backup(self):
         if os.path.exists(self.backup_path):
             try:
                 # We need to make sure the in-memory is also updated if we restore
@@ -455,6 +447,8 @@ class StorageManager:
                      audit_log("Restored Database from Backup into Memory")
 
                 shutil.copy2(self.backup_path, self.filepath)
+                # After restoring, we need to reload the in-memory database
+                self._load_from_disk()
                 return True
             except Exception as e:
                 log.error(f"Failed to restore from backup: {e}")
@@ -464,7 +458,7 @@ class StorageManager:
     def get_note_body(self, note_id):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("SELECT body FROM notes WHERE note_id = ?", (note_id,))
             result = cursor.fetchone()
             return result[0] if result else ""

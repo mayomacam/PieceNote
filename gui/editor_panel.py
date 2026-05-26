@@ -98,6 +98,9 @@ class EditorPanel(QWidget):
         self.autosave_timer.timeout.connect(self._autosave)
         self.autosave_timer.start()
 
+        self._last_raw_text = ""
+        self._cached_html = ""
+
         self.clear_and_disable()
 
     def trigger_preview_update(self):
@@ -170,6 +173,8 @@ class EditorPanel(QWidget):
             self.note_saved.emit(self.current_note_id, self.editor.toPlainText())
             self._is_modified = False
             if self.window():
+                if hasattr(self.window(), 'storage'):
+                    self.window().storage.save_to_disk()
                 self.window().statusBar().showMessage("Note saved!", 2000)
 
     def _autosave(self):
