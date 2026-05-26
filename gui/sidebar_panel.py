@@ -25,8 +25,8 @@ class SidebarPanel(QWidget):
         self.next_note_id = 1
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
 
         # Folder section
         folder_frame = QFrame()

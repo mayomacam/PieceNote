@@ -55,7 +55,8 @@ class EditorPanel(QWidget):
         self.preview_timer.timeout.connect(self._update_preview)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
         button_layout = QHBoxLayout()
         self.btn_save = QPushButton("💾 Save")
@@ -165,7 +166,7 @@ class EditorPanel(QWidget):
         self._is_modified = True
 
     def _save_note(self):
-        if self.current_note_id is not None:
+        if self.current_note_id is not None and self._is_modified:
             self.note_saved.emit(self.current_note_id, self.editor.toPlainText())
             self._is_modified = False
             if self.window():
@@ -232,7 +233,7 @@ class EditorPanel(QWidget):
             f"""pre{{background-color:#3c3c3c;padding:10px;border-radius:5px;}}"""
             f"""table{{border-collapse:collapse;width:auto;}}"""
             f"""th,td{{border:1px solid #777;padding:6px 13px;}}"""
-            f"""</style></head><body>{html_body}</body></html>"""
+            f"""</style></head><body>{sanitized_html}</body></html>"""
         )
         # Simple cache eviction: limit to 100 entries
         if len(self.render_cache) > 100:

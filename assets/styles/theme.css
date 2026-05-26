@@ -59,6 +59,7 @@ QListWidget {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     outline: none;
+    padding: 5px;
 }
 
 QListWidget::item {
@@ -68,7 +69,8 @@ QListWidget::item {
 }
 
 QListWidget::item:selected {
-    background-color: #264f78;
+    background-color: #37373d;
+    border-left: 3px solid var(--bg-accent);
     color: #ffffff;
 }
 
@@ -123,21 +125,25 @@ QSplitter::handle {
 }
 
 QSplitter::handle:horizontal {
-    width: 2px;
+    width: 1px;
+    margin: 0 4px;
 }
 
 QSplitter::handle:vertical {
-    height: 2px;
+    height: 1px;
+    margin: 4px 0;
 }
 
 QStatusBar {
     background-color: var(--primary);
     color: #ffffff;
+    font-size: 9pt;
 }
 
 QStatusBar QLabel {
     background-color: transparent;
     color: #ffffff;
+    padding: 0 5px;
 }
 
 QTabWidget::pane {
@@ -154,6 +160,7 @@ QTabBar::tab {
 QTabBar::tab:selected {
     background-color: var(--bg-main);
     color: #ffffff;
+    border-bottom: 2px solid var(--bg-accent);
 }
 
 QTabBar::tab:hover:!selected {
