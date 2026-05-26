@@ -9,6 +9,6 @@ pymdown-extensions
 # PDF Export Functionality
 xhtml2pdf
 
-# Security and Sanitization
-cryptography
+# Security
 bleach
+cryptography

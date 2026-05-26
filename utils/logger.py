@@ -42,7 +42,7 @@ def setup_logging():
     logger.addHandler(console_handler)
 
     logger.info("="*50)
-    logger.info("Logging configured successfully. Application starting.")
+    logger.info("Logging configured successfully.")
     logger.info("="*50)
     return logger
 

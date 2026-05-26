@@ -1,12 +1,12 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-*.bak
 app.log
-PieceNote.sqlite
-backups/
-venv/
+*.sqlite
+*.bak
 .env
+venv/
 .vscode/
 .idea/
+*.imported

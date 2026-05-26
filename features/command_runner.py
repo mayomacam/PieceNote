@@ -6,9 +6,16 @@ from utils.logger import audit_log
 
 class CommandRunner(QObject):
     """
-    A worker QObject that runs a shell command in a separate thread with strict validation.
+    A worker QObject that runs a shell command in a separate thread.
+    Includes a whitelist for SOC 2 grade security.
     """
-    finished = Signal(str)  # Signal emitting the markdown-formatted result
+    finished = Signal(str)
+
+    # SOC 2 alignment: Only allow a specific subset of safe/necessary commands.
+    WHITELIST = {
+        'nmap', 'ping', 'whoami', 'ls', 'dir', 'ipconfig', 'ifconfig',
+        'netstat', 'nslookup', 'traceroute', 'tracert', 'df', 'free', 'uptime'
+    }
 
     # Whitelist of allowed base commands for pentesting
     WHITELIST = {
@@ -47,9 +54,25 @@ class CommandRunner(QObject):
             self.finished.emit("")
             return
 
+        # SOC 2 Alignment: Command Validation (Whitelist)
+        allowed_commands = {'ls', 'nmap', 'ping', 'whoami', 'ps', 'cat', 'grep', 'find'}
+
         try:
-            # Use shlex to safely split the command string into a list
             args = shlex.split(self.command)
+            if not args:
+                self.finished.emit("Error: Empty command.")
+                return
+
+            base_cmd = args[0].lower()
+            # Handle Windows .exe suffix if present
+            if base_cmd.endswith('.exe'):
+                base_cmd = base_cmd[:-4]
+
+            if not args or args[0] not in allowed_commands:
+                output = f"Error: Command '{args[0] if args else ''}' is not whitelisted for execution."
+                markdown = f"```bash\n$ {self.command}\n{output.strip()}\n```\n"
+                self.finished.emit(markdown)
+                return
 
             if not self.is_safe(args):
                 self.finished.emit(f"```bash\n$ {self.command}\nError: Command rejected for security reasons.\n```\n")
@@ -67,6 +90,8 @@ class CommandRunner(QObject):
                 output += f"\n--- STDERR ---\n{result.stderr}"
         except subprocess.TimeoutExpired:
             output = "Error: Command timed out after 60 seconds."
+        except FileNotFoundError:
+            output = f"Error: Command '{args[0]}' not found."
         except Exception as e:
             output = f"Error executing command: {e}"
 
