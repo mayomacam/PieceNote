@@ -1,11 +1,14 @@
 # main.py
 import sys
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QIcon
 
 from gui.main_window import PieceNoteMainWindow
-from utils.helpers import STYLE_SHEET_PATH, APP_ROOT, log
+from gui.password_dialog import PasswordDialog
+from features.storage import StorageManager, DatabaseCorruptError
+from utils.helpers import STYLE_SHEET_PATH, APP_ROOT, DB_FILE_PATH, log
+from utils.logger import audit_log
 import os
 
 if __name__ == "__main__":
@@ -25,6 +28,26 @@ if __name__ == "__main__":
     except FileNotFoundError:
         log.warning(f"Stylesheet not found at: {STYLE_SHEET_PATH}")
 
-    window = PieceNoteMainWindow()
-    window.show()
-    sys.exit(app.exec())
+    # --- Authentication Flow ---
+    db_exists = os.path.exists(DB_FILE_PATH)
+    mode = "login" if db_exists else "setup"
+
+    auth_dlg = PasswordDialog(mode=mode)
+    if auth_dlg.exec():
+        password = auth_dlg.get_password()
+        try:
+            storage = StorageManager(password=password)
+            audit_log("User Authenticated", "Database unlocked successfully.")
+            window = PieceNoteMainWindow(storage=storage)
+            window.show()
+            sys.exit(app.exec())
+        except DatabaseCorruptError:
+            audit_log("Authentication Failed", "Invalid password or corrupt database.")
+            QMessageBox.critical(None, "Access Denied", "Invalid password or the database is corrupt.")
+            sys.exit(1)
+        except Exception as e:
+            log.error(f"Unexpected error during startup: {e}")
+            sys.exit(1)
+    else:
+        audit_log("Authentication Cancelled")
+        sys.exit(0)

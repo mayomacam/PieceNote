@@ -3,7 +3,9 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QInputDialog, QMessageBox, QAbstractItemView, QMenu, QLineEdit
 )
 from PySide6.QtCore import Qt, Signal
-from utils.helpers import SETTINGS, log
+from PySide6.QtGui import QIcon
+import os
+from utils.helpers import SETTINGS, log, APP_ROOT
 from utils.logger import audit_log
 
 
@@ -35,15 +37,20 @@ class SidebarPanel(QWidget):
 
         folder_header = QHBoxLayout()
         folder_label = QLabel("FOLDERS")
-        folder_label.setStyleSheet("font-weight: bold; color: #888; font-size: 9pt; margin-left: 5px;")
+        folder_label.setObjectName("HeaderLabel")
         folder_header.addWidget(folder_label)
         folder_header.addStretch()
 
-        self.btn_folder_new = QPushButton("＋")
-        self.btn_folder_rename = QPushButton("✏")
-        self.btn_folder_del = QPushButton("🗑")
+        self.btn_folder_new = QPushButton()
+        self.btn_folder_new.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/folder.svg")))
+        self.btn_folder_rename = QPushButton()
+        self.btn_folder_rename.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/rename.svg")))
+        self.btn_folder_del = QPushButton()
+        self.btn_folder_del.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/delete.svg")))
+
         for btn in [self.btn_folder_new, self.btn_folder_rename, self.btn_folder_del]:
-            btn.setFixedWidth(28)
+            btn.setFixedWidth(32)
+            btn.setFixedHeight(32)
             btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
             folder_header.addWidget(btn)
 
@@ -60,15 +67,20 @@ class SidebarPanel(QWidget):
 
         note_header = QHBoxLayout()
         note_label = QLabel("NOTES")
-        note_label.setStyleSheet("font-weight: bold; color: #888; font-size: 9pt; margin-left: 5px;")
+        note_label.setObjectName("HeaderLabel")
         note_header.addWidget(note_label)
         note_header.addStretch()
 
-        self.btn_note_new = QPushButton("＋")
-        self.btn_note_rename = QPushButton("✏")
-        self.btn_note_del = QPushButton("🗑")
+        self.btn_note_new = QPushButton()
+        self.btn_note_new.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/note.svg")))
+        self.btn_note_rename = QPushButton()
+        self.btn_note_rename.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/rename.svg")))
+        self.btn_note_del = QPushButton()
+        self.btn_note_del.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/delete.svg")))
+
         for btn in [self.btn_note_new, self.btn_note_rename, self.btn_note_del]:
-            btn.setFixedWidth(28)
+            btn.setFixedWidth(32)
+            btn.setFixedHeight(32)
             btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
             note_header.addWidget(btn)
 
@@ -126,7 +138,10 @@ class SidebarPanel(QWidget):
             self.search_bar.clear()
             self.note_list.setEnabled(True)
             self.search_bar.setEnabled(True)
+
+            self.note_list.setUpdatesEnabled(False)
             self._populate_note_list()
+            self.note_list.setUpdatesEnabled(True)
         else:
             self.current_folder = None
             self.note_list.clear()
@@ -399,9 +414,11 @@ class SidebarPanel(QWidget):
 
     def _filter_notes(self):
         query = self.search_bar.text().lower()
+        self.note_list.setUpdatesEnabled(False)
         for i in range(self.note_list.count()):
             item = self.note_list.item(i)
             item.setHidden(query not in item.text().lower())
+        self.note_list.setUpdatesEnabled(True)
 
     def select_folder_by_id(self, folder_id_to_select):
         for i in range(self.folder_list.count()):

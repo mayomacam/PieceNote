@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTextEdit, QHBoxLayout,
     QPushButton, QMessageBox, QApplication
 )
+from utils.helpers import APP_ROOT
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QThread, QObject, Slot
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWebEngineCore import QWebEnginePage
@@ -18,6 +19,7 @@ except ImportError:
 
 
 import markdown
+import bleach
 from markdown.extensions.fenced_code import FencedCodeExtension
 from markdown.extensions.tables import TableExtension
 from pymdownx.tasklist import TasklistExtension
@@ -46,6 +48,7 @@ class EditorPanel(QWidget):
         self.current_note_id = None
         self._is_modified = False
         self.command_thread = None
+        self._last_rendered_content = None
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -56,12 +59,23 @@ class EditorPanel(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
 
         button_layout = QHBoxLayout()
-        self.btn_save = QPushButton("💾 Save")
-        self.btn_img = QPushButton("🖼️ Add Image")
-        self.btn_term = QPushButton("📟 Run Command")
-        button_layout.addWidget(self.btn_save)
-        button_layout.addWidget(self.btn_img)
-        button_layout.addWidget(self.btn_term)
+        self.btn_save = QPushButton()
+        self.btn_save.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/note.svg")))
+        self.btn_save.setToolTip("Save Note (Ctrl+S)")
+
+        self.btn_img = QPushButton()
+        self.btn_img.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/folder.svg"))) # Placeholder if image icon missing
+        self.btn_img.setToolTip("Add Image")
+
+        self.btn_term = QPushButton()
+        self.btn_term.setIcon(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/move.svg"))) # Placeholder
+        self.btn_term.setToolTip("Run Terminal Command")
+
+        for btn in [self.btn_save, self.btn_img, self.btn_term]:
+            btn.setFixedWidth(40)
+            btn.setFixedHeight(30)
+            button_layout.addWidget(btn)
+
         button_layout.addStretch()
         layout.addLayout(button_layout)
 
@@ -167,6 +181,10 @@ class EditorPanel(QWidget):
 
     def _update_preview(self):
         raw_text = self.editor.toPlainText()
+        if raw_text == self._last_rendered_content:
+            return
+
+        self._last_rendered_content = raw_text
         css = HtmlFormatter(style='monokai').get_style_defs('.codehilite')
         js_script = (
             """<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>"""
@@ -183,8 +201,24 @@ class EditorPanel(QWidget):
             TableExtension(),
             TasklistExtension(custom_checkbox=True)
         ]
-        html_body = markdown.markdown(raw_text, extensions=md_extensions)
+        html_raw = markdown.markdown(raw_text, extensions=md_extensions)
 
+        # Sanitize HTML for SOC 2 grade security (prevent XSS)
+        allowed_tags = list(bleach.ALLOWED_TAGS) + [
+            'p', 'pre', 'code', 'span', 'div', 'table', 'thead', 'tbody',
+            'tr', 'th', 'td', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br',
+            'img', 'ul', 'ol', 'li', 'input', 'hr'
+        ]
+        allowed_attrs = {
+            **bleach.ALLOWED_ATTRIBUTES,
+            'code': ['class'],
+            'span': ['class'],
+            'div': ['class'],
+            'img': ['src', 'alt', 'title', 'width', 'height'],
+            'input': ['type', 'checked', 'disabled'],
+            'li': ['class']
+        }
+        html_body = bleach.clean(html_raw, tags=allowed_tags, attributes=allowed_attrs)
 
         full_html = (
             f"""<html><head><meta charset="UTF-8">{js_script}"""
