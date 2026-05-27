@@ -22,7 +22,7 @@ class PieceNoteMainWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
 
         self.open_tabs = {}
-        self.master_password = None
+        self.master_password = getattr(storage, 'password', None) if storage else None
 
         try:
             self.storage = storage if storage else StorageManager()

@@ -47,6 +47,8 @@ class StorageManager:
                 self._in_memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
                 self._in_memory_conn.deserialize(decrypted_data)
                 audit_log("Database Load", "Encrypted database loaded to memory successfully")
+                self._create_tables()
+                self._import_from_json_if_needed()
             except Exception as e:
                 log.error(f"Failed to load encrypted database: {e}")
                 raise DatabaseCorruptError(f"Failed to decrypt database: {e}")

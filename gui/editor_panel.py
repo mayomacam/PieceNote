@@ -189,8 +189,7 @@ class EditorPanel(QWidget):
             self._is_modified = False
             if self.window() and hasattr(self.window(), 'storage'):
                 self.window().storage.save_to_disk()
-                if hasattr(self.window(), 'statusBar'):
-                    self.window().statusBar().showMessage("Note saved!", 2000)
+                self.window().statusBar().showMessage("Note saved!", 2000)
 
     def _autosave(self):
         if self._is_modified:
