@@ -1,27 +1,21 @@
 import subprocess
 import shlex
-import re
 from PySide6.QtCore import QObject, Signal
 from utils.logger import audit_log
 
 class CommandRunner(QObject):
     """
     A worker QObject that runs a shell command in a separate thread.
-    Includes a whitelist for SOC 2 grade security.
+    Includes a strict whitelist for SOC 2 grade security.
     """
     finished = Signal(str)
 
-    # SOC 2 alignment: Only allow a specific subset of safe/necessary commands.
-    WHITELIST = {
-        'nmap', 'ping', 'whoami', 'ls', 'dir', 'ipconfig', 'ifconfig',
-        'netstat', 'nslookup', 'traceroute', 'tracert', 'df', 'free', 'uptime'
-    }
-
-    # Whitelist of allowed base commands for pentesting
+    # SOC 2 Alignment: Whitelist of allowed base commands for pentesting/system info.
     WHITELIST = {
         'nmap', 'whoami', 'ls', 'pwd', 'ping', 'netstat',
         'ipconfig', 'ifconfig', 'id', 'uname', 'hostname',
-        'cat', 'grep', 'head', 'tail', 'df', 'free', 'uptime'
+        'cat', 'grep', 'head', 'tail', 'df', 'free', 'uptime',
+        'nslookup', 'traceroute', 'tracert', 'ps'
     }
 
     def __init__(self, command):
@@ -33,13 +27,15 @@ class CommandRunner(QObject):
         if not args:
             return False
 
-        base_cmd = args[0]
+        base_cmd = args[0].lower()
+        if base_cmd.endswith('.exe'):
+            base_cmd = base_cmd[:-4]
+
         if base_cmd not in self.WHITELIST:
             audit_log("Security Violation", f"Command rejected (not in whitelist): {base_cmd}")
             return False
 
-        # Disallow command chaining and redirection to prevent shell injection
-        # shlex already handles many cases, but we want to be extra strict.
+        # Disallow command chaining and redirection to prevent shell injection.
         forbidden_chars = [';', '&', '|', '>', '<', '`', '$', '(', ')']
         for arg in args:
             if any(char in arg for char in forbidden_chars):
@@ -54,24 +50,10 @@ class CommandRunner(QObject):
             self.finished.emit("")
             return
 
-        # SOC 2 Alignment: Command Validation (Whitelist)
-        allowed_commands = {'ls', 'nmap', 'ping', 'whoami', 'ps', 'cat', 'grep', 'find'}
-
         try:
             args = shlex.split(self.command)
             if not args:
                 self.finished.emit("Error: Empty command.")
-                return
-
-            base_cmd = args[0].lower()
-            # Handle Windows .exe suffix if present
-            if base_cmd.endswith('.exe'):
-                base_cmd = base_cmd[:-4]
-
-            if not args or args[0] not in allowed_commands:
-                output = f"Error: Command '{args[0] if args else ''}' is not whitelisted for execution."
-                markdown = f"```bash\n$ {self.command}\n{output.strip()}\n```\n"
-                self.finished.emit(markdown)
                 return
 
             if not self.is_safe(args):
@@ -80,7 +62,7 @@ class CommandRunner(QObject):
 
             result = subprocess.run(
                 args,
-                shell=False, # Crucial: shell=False prevents most injection
+                shell=False, # Crucial: shell=False prevents shell injection
                 capture_output=True,
                 text=True,
                 timeout=60
@@ -88,12 +70,16 @@ class CommandRunner(QObject):
             output = result.stdout
             if result.stderr:
                 output += f"\n--- STDERR ---\n{result.stderr}"
+
+            audit_log("Command Executed", f"Successfully ran: {self.command}")
         except subprocess.TimeoutExpired:
             output = "Error: Command timed out after 60 seconds."
+            audit_log("Command Error", f"Timeout running: {self.command}")
         except FileNotFoundError:
             output = f"Error: Command '{args[0]}' not found."
         except Exception as e:
             output = f"Error executing command: {e}"
+            audit_log("Command Error", f"Exception running {self.command}: {e}")
 
         markdown = f"```bash\n$ {self.command}\n{output.strip()}\n```\n"
         self.finished.emit(markdown)

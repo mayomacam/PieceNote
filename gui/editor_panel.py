@@ -1,9 +1,8 @@
 import os
 import re
-import pathlib
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTextEdit, QHBoxLayout,
-    QPushButton, QMessageBox, QApplication
+    QPushButton, QMessageBox, QApplication, QSplitter
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QThread, QObject, Slot
 from PySide6.QtGui import QFont, QTextCursor
@@ -48,21 +47,28 @@ class EditorPanel(QWidget):
         self._is_modified = False
         self.command_thread = None
         self.render_cache = {}
+        self._last_rendered_text = ""
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
-        self.preview_timer.setInterval(250)
+        self.preview_timer.setInterval(300)
         self.preview_timer.timeout.connect(self._update_preview)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(10, 5, 10, 5)
+        button_layout.setSpacing(10)
         self.btn_save = QPushButton("💾 Save")
-        self.btn_img = QPushButton("🖼️ Add Image")
-        self.btn_term = QPushButton("📟 Run Command")
-        self.btn_preview = QPushButton("👁️ Toggle Preview")
+        self.btn_img = QPushButton("🖼️ Image")
+        self.btn_term = QPushButton("📟 Command")
+        self.btn_preview = QPushButton("👁️ Preview")
+
+        for btn in [self.btn_save, self.btn_img, self.btn_term, self.btn_preview]:
+            btn.setCursor(Qt.PointingHandCursor)
+
         button_layout.addWidget(self.btn_save)
         button_layout.addWidget(self.btn_img)
         button_layout.addWidget(self.btn_term)
@@ -70,7 +76,13 @@ class EditorPanel(QWidget):
         button_layout.addStretch()
         layout.addLayout(button_layout)
 
+        self.editor_splitter = QSplitter(Qt.Horizontal)
+        self.editor_splitter.setHandleWidth(1)
+
         self.editor = QTextEdit()
+        self.editor.setAcceptRichText(False)
+        self.editor.setFrameStyle(QTextEdit.NoFrame)
+
         if WEB_ENGINE_AVAILABLE:
             self.preview = QWebEngineView()
             self.page = QWebEnginePage(self.preview)
@@ -83,9 +95,14 @@ class EditorPanel(QWidget):
         else:
             self.preview = QTextEdit()
             self.preview.setReadOnly(True)
+            self.preview.setFrameStyle(QTextEdit.NoFrame)
 
-        layout.addWidget(self.editor, stretch=1)
-        layout.addWidget(self.preview, stretch=1)
+        self.editor_splitter.addWidget(self.editor)
+        self.editor_splitter.addWidget(self.preview)
+        self.editor_splitter.setStretchFactor(0, 1)
+        self.editor_splitter.setStretchFactor(1, 1)
+
+        layout.addWidget(self.editor_splitter)
 
         self.btn_save.clicked.connect(self._save_note)
         self.btn_img.clicked.connect(self._insert_image)
@@ -97,9 +114,6 @@ class EditorPanel(QWidget):
         self.autosave_timer.setInterval(30000)
         self.autosave_timer.timeout.connect(self._autosave)
         self.autosave_timer.start()
-
-        self._last_raw_text = ""
-        self._cached_html = ""
 
         self.clear_and_disable()
 
@@ -156,6 +170,7 @@ class EditorPanel(QWidget):
         self.editor.setPlainText(body or "")
         self.editor.blockSignals(False)
         self._is_modified = False
+        self._last_rendered_text = ""
         self.trigger_preview_update()
         self.btn_save.setEnabled(True)
         self.btn_img.setEnabled(True)
@@ -172,9 +187,8 @@ class EditorPanel(QWidget):
         if self.current_note_id is not None and self._is_modified:
             self.note_saved.emit(self.current_note_id, self.editor.toPlainText())
             self._is_modified = False
-            if self.window():
-                if hasattr(self.window(), 'storage'):
-                    self.window().storage.save_to_disk()
+            if self.window() and hasattr(self.window(), 'storage'):
+                self.window().storage.save_to_disk()
                 self.window().statusBar().showMessage("Note saved!", 2000)
 
     def _autosave(self):
@@ -183,67 +197,66 @@ class EditorPanel(QWidget):
 
     def _update_preview(self):
         raw_text = self.editor.toPlainText()
-        if raw_text in self.render_cache:
-            full_html = self.render_cache[raw_text]
-            if WEB_ENGINE_AVAILABLE:
-                base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)
-                self.preview.setHtml(full_html, baseUrl=base_url)
-            else:
-                self.preview.setPlainText(full_html)
+        if raw_text == self._last_rendered_text:
             return
 
-        css = HtmlFormatter(style='monokai').get_style_defs('.codehilite')
-        js_script = (
-            """<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>"""
-            """<script>document.addEventListener("DOMContentLoaded",function(){"""
-            """new QWebChannel(qt.webChannelTransport,function(c){window.py_bridge=c.objects.py_bridge;"""
-            """var e=document.querySelectorAll("li.task-list-item");"""
-            """e.forEach(function(c,t){let n=c.querySelector('input[type=checkbox]');"""
-            """n&&n.addEventListener("change",function(c){window.py_bridge&&window.py_bridge.update_checklist_state(t,c.target.checked)})})})});</script>"""
-        )
+        self._last_rendered_text = raw_text
 
+        if raw_text in self.render_cache:
+            full_html = self.render_cache[raw_text]
+        else:
+            css = HtmlFormatter(style='monokai').get_style_defs('.codehilite')
+            js_script = (
+                """<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>"""
+                """<script>document.addEventListener("DOMContentLoaded",function(){"""
+                """new QWebChannel(qt.webChannelTransport,function(c){window.py_bridge=c.objects.py_bridge;"""
+                """var e=document.querySelectorAll("li.task-list-item");"""
+                """e.forEach(function(c,t){let n=c.querySelector('input[type=checkbox]');"""
+                """n&&n.addEventListener("change",function(c){window.py_bridge&&window.py_bridge.update_checklist_state(t,c.target.checked)})})})});</script>"""
+            )
 
-        md_extensions = [
-            FencedCodeExtension(),
-            TableExtension(),
-            TasklistExtension(custom_checkbox=True)
-        ]
-        html_body_raw = markdown.markdown(raw_text, extensions=md_extensions)
+            md_extensions = [
+                FencedCodeExtension(),
+                TableExtension(),
+                TasklistExtension(custom_checkbox=True)
+            ]
+            html_body_raw = markdown.markdown(raw_text, extensions=md_extensions)
 
-        # SOC 2 Alignment: Sanitize HTML to prevent XSS
-        # Allow some basic tags and attributes for Markdown rendering
-        allowed_tags = list(bleach.sanitizer.ALLOWED_TAGS) + [
-            'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr', 'pre', 'code',
-            'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'span', 'div',
-            'input', 'li', 'ul', 'ol'
-        ]
-        allowed_attrs = bleach.sanitizer.ALLOWED_ATTRIBUTES
-        allowed_attrs.update({
-            'img': ['src', 'alt', 'title', 'width', 'height'],
-            'code': ['class'],
-            'span': ['class'],
-            'div': ['class'],
-            'input': ['type', 'checked', 'disabled'], # For tasklists
-            'li': ['class']
-        })
+            allowed_tags = list(bleach.sanitizer.ALLOWED_TAGS) + [
+                'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr', 'pre', 'code',
+                'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'span', 'div',
+                'input', 'li', 'ul', 'ol'
+            ]
+            allowed_attrs = bleach.sanitizer.ALLOWED_ATTRIBUTES.copy()
+            allowed_attrs.update({
+                'img': ['src', 'alt', 'title', 'width', 'height'],
+                'code': ['class'],
+                'span': ['class'],
+                'div': ['class'],
+                'input': ['type', 'checked', 'disabled'],
+                'li': ['class']
+            })
 
-        html_body = bleach.clean(html_body_raw, tags=allowed_tags, attributes=allowed_attrs)
+            sanitized_html = bleach.clean(html_body_raw, tags=allowed_tags, attributes=allowed_attrs)
 
-        full_html = (
-            f"""<html><head><meta charset="UTF-8">{js_script}"""
-            f"""<style>body{{background-color:#2b2b2b;color:#dcdcdc;font-family:sans-serif;}}"""
-            f"""li.task-list-item{{list-style-type:none;}}"""
-            f"""li.task-list-item input[type=checkbox]{{margin-right:8px;}}"""
-            f"""{css}pre code{{background-color:transparent!important;}}"""
-            f"""pre{{background-color:#3c3c3c;padding:10px;border-radius:5px;}}"""
-            f"""table{{border-collapse:collapse;width:auto;}}"""
-            f"""th,td{{border:1px solid #777;padding:6px 13px;}}"""
-            f"""</style></head><body>{sanitized_html}</body></html>"""
-        )
-        # Simple cache eviction: limit to 100 entries
-        if len(self.render_cache) > 100:
-            self.render_cache.pop(next(iter(self.render_cache)))
-        self.render_cache[raw_text] = full_html
+            full_html = (
+                f"""<html><head><meta charset="UTF-8">{js_script}"""
+                f"""<style>body{{background-color:#121212;color:#e1e1e1;font-family:sans-serif;padding:30px;line-height:1.6;}}"""
+                f"""li.task-list-item{{list-style-type:none;}}"""
+                f"""li.task-list-item input[type=checkbox]{{margin-right:8px;}}"""
+                f"""{css}pre code{{background-color:transparent!important;}}"""
+                f"""pre{{background-color:#1e1e1e;padding:15px;border-radius:8px;border:1px solid #333;overflow-x:auto;}}"""
+                f"""table{{border-collapse:collapse;width:100%;margin-bottom:1em;}}"""
+                f"""th,td{{border:1px solid #333;padding:10px;text-align:left;}}"""
+                f"""th{{background-color:#1e1e1e;}}"""
+                f"""h1,h2,h3{{color:#0a84ff;}}"""
+                f"""img{{max-width:100%;border-radius:8px;}}"""
+                f"""</style></head><body>{sanitized_html}</body></html>"""
+            )
+
+            if len(self.render_cache) > 100:
+                self.render_cache.pop(next(iter(self.render_cache)))
+            self.render_cache[raw_text] = full_html
 
         if WEB_ENGINE_AVAILABLE:
             base_url = QUrl.fromLocalFile(os.getcwd() + os.path.sep)
