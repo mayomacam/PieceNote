@@ -48,6 +48,11 @@ class StorageManager:
 
     def _init_memory_db(self):
         """Initializes the in-memory SQLite database connection."""
+        if not hasattr(sqlite3.Connection, "serialize"):
+            raise RuntimeError(
+                "SQLite serialize/deserialize APIs are not available in this Python environment. "
+                "Please ensure you are using Python 3.11+ and that SQLite is compiled with SQLITE_ENABLE_SERIALIZE."
+            )
         self._in_memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._in_memory_conn.execute("PRAGMA foreign_keys = ON")
         # Apply performance PRAGMAs
