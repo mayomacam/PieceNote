@@ -41,6 +41,7 @@ class StorageManager:
             self._create_tables()
             # If a password was provided, save the empty DB in encrypted format immediately
             if self.password:
+                self._is_modified = True
                 self.save_to_disk()
 
         self._import_from_json_if_needed()
