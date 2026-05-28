@@ -134,7 +134,12 @@ class SidebarPanel(QWidget):
             self.search_bar.clear()
             self.note_list.setEnabled(True)
             self.search_bar.setEnabled(True)
-            self._populate_note_list()
+
+            self.note_list.setUpdatesEnabled(False)
+            try:
+                self._populate_note_list()
+            finally:
+                self.note_list.setUpdatesEnabled(True)
         else:
             self.current_folder = None
             self.note_list.clear()

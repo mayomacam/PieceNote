@@ -84,8 +84,6 @@ class StorageManager:
         conn.execute("PRAGMA mmap_size = 268435456") # 256MB
         return conn
 
-    def _create_tables(self):
-        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -236,7 +234,7 @@ class StorageManager:
     def update_note_body(self, note_id, body):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("UPDATE notes SET body = ? WHERE note_id = ?", (body, note_id))
             conn.commit()
             self._dirty = True
@@ -248,7 +246,7 @@ class StorageManager:
     def update_note_title(self, note_id, title):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("UPDATE notes SET title = ? WHERE note_id = ?", (title, note_id))
             conn.commit()
             self._dirty = True
@@ -282,7 +280,7 @@ class StorageManager:
             return True
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             placeholders = ",".join(["?"] * len(note_ids))
             cursor.execute(f"DELETE FROM notes WHERE note_id IN ({placeholders})", note_ids)
             conn.commit()
@@ -308,7 +306,7 @@ class StorageManager:
     def rename_folder(self, folder_id, name):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("UPDATE folders SET name = ? WHERE folder_id = ?", (name, folder_id))
             conn.commit()
             self._dirty = True
@@ -320,7 +318,7 @@ class StorageManager:
     def delete_folder(self, folder_id):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("DELETE FROM folders WHERE folder_id = ?", (folder_id,))
             conn.commit()
             self._dirty = True
@@ -332,7 +330,7 @@ class StorageManager:
     def reorder_notes(self, folder_id, note_ids):
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             cursor.execute("BEGIN")
             for i, note_id in enumerate(note_ids):
                 cursor.execute(
