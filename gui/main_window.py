@@ -110,12 +110,13 @@ class PieceNoteMainWindow(QMainWindow):
         self.db_save_timer.timeout.connect(self._background_db_save)
         self.db_save_timer.start()
 
-        # SOC 2: Inactivity Auto-Lock (15 minutes)
-        self.lock_timer = QTimer(self)
-        self.lock_timer.setInterval(15 * 60 * 1000)
-        self.lock_timer.timeout.connect(self.auto_lock)
-        self.lock_timer.start()
-        QApplication.instance().installEventFilter(self)
+        # SOC 2: Inactivity Auto-Lock (15 minutes) - only if master password is set
+        if self.master_password:
+            self.lock_timer = QTimer(self)
+            self.lock_timer.setInterval(15 * 60 * 1000)
+            self.lock_timer.timeout.connect(self.auto_lock)
+            self.lock_timer.start()
+            QApplication.instance().installEventFilter(self)
 
         self.statusBar().showMessage("Ready", 3000)
 
