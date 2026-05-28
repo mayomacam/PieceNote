@@ -75,20 +75,6 @@ class StorageManager:
         self._create_tables()
         self._import_from_json_if_needed()
 
-    def _init_memory_db(self):
-        """Initializes the in-memory SQLite database connection."""
-        if not hasattr(sqlite3.Connection, "serialize"):
-            raise RuntimeError(
-                "SQLite serialize/deserialize APIs are not available in this Python environment. "
-                "Please ensure you are using Python 3.11+ and that SQLite is compiled with SQLITE_ENABLE_SERIALIZE."
-            )
-        self._in_memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
-        self._in_memory_conn.execute("PRAGMA foreign_keys = ON")
-        # Apply performance PRAGMAs
-        self._in_memory_conn.execute("PRAGMA journal_mode = MEMORY")
-        self._in_memory_conn.execute("PRAGMA synchronous = OFF")
-        self._in_memory_conn.execute("PRAGMA mmap_size = 30000000000")
-
     def _get_connection(self):
         """Returns the in-memory connection with optimized PRAGMAs."""
         conn = self._in_memory_conn
@@ -98,6 +84,8 @@ class StorageManager:
         conn.execute("PRAGMA mmap_size = 268435456") # 256MB
         return conn
 
+    def _create_tables(self):
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -248,7 +236,7 @@ class StorageManager:
     def update_note_body(self, note_id, body):
         conn = self._get_connection()
         try:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             cursor.execute("UPDATE notes SET body = ? WHERE note_id = ?", (body, note_id))
             conn.commit()
             self._dirty = True
@@ -260,7 +248,7 @@ class StorageManager:
     def update_note_title(self, note_id, title):
         conn = self._get_connection()
         try:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             cursor.execute("UPDATE notes SET title = ? WHERE note_id = ?", (title, note_id))
             conn.commit()
             self._dirty = True
@@ -294,7 +282,7 @@ class StorageManager:
             return True
         conn = self._get_connection()
         try:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             placeholders = ",".join(["?"] * len(note_ids))
             cursor.execute(f"DELETE FROM notes WHERE note_id IN ({placeholders})", note_ids)
             conn.commit()
@@ -320,7 +308,7 @@ class StorageManager:
     def rename_folder(self, folder_id, name):
         conn = self._get_connection()
         try:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             cursor.execute("UPDATE folders SET name = ? WHERE folder_id = ?", (name, folder_id))
             conn.commit()
             self._dirty = True
@@ -332,7 +320,7 @@ class StorageManager:
     def delete_folder(self, folder_id):
         conn = self._get_connection()
         try:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             cursor.execute("DELETE FROM folders WHERE folder_id = ?", (folder_id,))
             conn.commit()
             self._dirty = True
@@ -344,7 +332,7 @@ class StorageManager:
     def reorder_notes(self, folder_id, note_ids):
         conn = self._get_connection()
         try:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             cursor.execute("BEGIN")
             for i, note_id in enumerate(note_ids):
                 cursor.execute(

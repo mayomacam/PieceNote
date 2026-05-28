@@ -14,32 +14,6 @@
     --selection: #303f9f;
 }
 
-:root {
-    --bg-main: #1e1e1e;
-    --bg-side: #252526;
-    --bg-hover: #2a2d2e;
-    --bg-selected: #37373d;
-    --accent: #007acc;
-    --accent-hover: #1c97ea;
-    --text-main: #cccccc;
-    --text-bright: #ffffff;
-    --text-muted: #888888;
-    --border: #3e3e3e;
-}
-
-:root {
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #252526;
-    --bg-tertiary: #2d2d2d;
-    --bg-highlight: #3c3c3c;
-    --text-main: #cccccc;
-    --text-bright: #ffffff;
-    --accent-blue: #007acc;
-    --accent-blue-hover: #118ad4;
-    --border-color: #3e3e3e;
-    --sidebar-text: #888;
-}
-
 QWidget {
     background-color: var(--bg-main);
     color: var(--text-main);
@@ -152,25 +126,6 @@ QPushButton:disabled {
     border-color: transparent;
 }
 
-QToolBar {
-    background-color: #2d2d2d;
-    border-bottom: 1px solid var(--border);
-    spacing: 10px;
-    padding: 5px;
-}
-
-QToolButton {
-    background-color: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 4px;
-}
-
-QToolButton:hover {
-    background-color: var(--bg-hover);
-    border: 1px solid var(--border);
-}
-
 QSplitter::handle {
     background-color: transparent;
 }
@@ -237,12 +192,4 @@ QScrollBar::handle:vertical:hover {
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
-}
-
-QLabel#HeaderLabel {
-    font-weight: bold;
-    color: var(--sidebar-text);
-    font-size: 9pt;
-    letter-spacing: 1px;
-    text-transform: uppercase;
 }

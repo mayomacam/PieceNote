@@ -2,10 +2,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QSplitter, QMessageBox, QFileDialog, QLabel, QTabWidget, QWidget, QVBoxLayout,
     QApplication
 )
-from PySide6.QtGui import QAction, QIcon
-import os
-from utils.helpers import APP_ROOT
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt, QSettings, QTimer, QEvent
 
 from gui.sidebar_panel import SidebarPanel
 from gui.password_dialog import PasswordDialog
@@ -59,13 +57,9 @@ class PieceNoteMainWindow(QMainWindow):
         try:
             self.storage = storage if storage else StorageManager()
             self.sidebar = SidebarPanel(self.storage)
-        else:
-            try:
-                self.storage = StorageManager()
-                self.sidebar = SidebarPanel(self.storage)
-            except DatabaseCorruptError:
-                self.handle_db_corruption()
-                return
+        except DatabaseCorruptError:
+            self.handle_db_corruption()
+            return
 
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(True)
@@ -108,7 +102,6 @@ class PieceNoteMainWindow(QMainWindow):
 
         self.settings = SETTINGS
         self._create_menu_bar()
-        self._create_tool_bar()
         self._restore_window_state()
 
         # Database persistence timer (performance enhancement)
@@ -233,32 +226,6 @@ class PieceNoteMainWindow(QMainWindow):
                 QMessageBox.information(self, "Success", "Database restored. Please restart.")
         self.close()
 
-    def _create_tool_bar(self):
-        self.toolbar = QToolBar("Main Toolbar")
-        self.toolbar.setMovable(False)
-        self.toolbar.setIconSize(self.toolbar.iconSize() * 1.5)
-        self.addToolBar(self.toolbar)
-
-        new_folder_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/folder.svg")), "New Folder", self)
-        new_folder_act.triggered.connect(self.sidebar.create_folder)
-        self.toolbar.addAction(new_folder_act)
-
-        new_note_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/note.svg")), "New Note", self)
-        new_note_act.triggered.connect(self.sidebar.create_note)
-        self.toolbar.addAction(new_note_act)
-
-        self.toolbar.addSeparator()
-
-        save_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/note.svg")), "Save All", self) # Should use a save icon if available
-        save_act.triggered.connect(self.sidebar.save_data_to_storage)
-        self.toolbar.addAction(save_act)
-
-        self.toolbar.addSeparator()
-
-        search_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/rename.svg")), "Search", self) # Placeholder
-        search_act.triggered.connect(self.open_search_dialog)
-        self.toolbar.addAction(search_act)
-
     def _create_menu_bar(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("File")
@@ -316,15 +283,7 @@ class PieceNoteMainWindow(QMainWindow):
             if reply == QMessageBox.Yes:
                 for editor in unsaved_editors: editor._autosave()
 
-        # Persist the in-memory database to the encrypted disk file
         if self.storage:
-            try:
-                self.storage.save_to_disk()
-                log.info("Database successfully persisted to disk on exit.")
-            except Exception as e:
-                log.error(f"Failed to save database on exit: {e}")
-                QMessageBox.critical(self, "Save Error", f"Failed to save changes: {e}")
-
             self._save_window_state()
             self.storage.save_to_disk()
         event.accept()

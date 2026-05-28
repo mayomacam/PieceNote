@@ -51,15 +51,15 @@ def setup_logging():
 
 def audit_log(action, details=None, level="INFO"):
     """Specific logging for security-sensitive actions (SOC 2 alignment)."""
-    # SOC 2: Ensure logs include timestamp (handled by formatter),
-    # action, and as much context as possible.
-    message = f"[AUDIT] Action: {action}"
-    if details:
-        message += f" | Details: {details}"
-
-    # We could add more automated context here (user, session ID, etc.)
-    # but for a local app, the action and details are the primary focus.
-    log.info(message)
+    # Use JSON formatting for structured logs
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "event_type": action,
+        "user_id": getpass.getuser(),
+        "details": details,
+        "level": level
+    }
+    message = f"[AUDIT] {json.dumps(log_entry)}"
 
     if level == "CRITICAL":
         log.critical(message)

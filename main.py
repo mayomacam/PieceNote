@@ -18,7 +18,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     # --- Set Application Icon ---
-    icon_path = os.path.join(APP_ROOT, "assets", "icons", "icon.png")
+    icon_path = os.path.join(APP_ROOT, "assets", "icons", "icon.png") # Assuming you create this file
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
