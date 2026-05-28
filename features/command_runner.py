@@ -19,6 +19,12 @@ class CommandRunner(QObject):
         'nslookup', 'traceroute', 'tracert', 'ps'
     }
 
+    # SOC 2: Command Whitelist to prevent arbitrary code execution
+    WHITELIST = {
+        "nmap", "whoami", "ls", "pwd", "ping", "netstat", "ipconfig", "ifconfig",
+        "id", "uname", "hostname", "cat", "grep", "head", "tail", "df", "free", "uptime"
+    }
+
     def __init__(self, command):
         super().__init__()
         self.command = command.strip()

@@ -4,7 +4,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTextEdit, QHBoxLayout,
     QPushButton, QMessageBox, QApplication, QSplitter
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QThread, QObject, Slot
+from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QThread, QObject, Slot, QSize
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebChannel import QWebChannel
@@ -21,6 +22,7 @@ import bleach
 from markdown.extensions.fenced_code import FencedCodeExtension
 from markdown.extensions.tables import TableExtension
 from pymdownx.tasklist import TasklistExtension
+import bleach
 
 from pygments.formatters import HtmlFormatter
 from features.image_handler import select_image, image_path_to_markdown
@@ -321,7 +323,7 @@ class EditorPanel(QWidget):
                 worker.finished.connect(worker.deleteLater)
                 self.command_thread.finished.connect(self.command_thread.deleteLater)
                 self.command_thread.start()
-                self.btn_term.setEnabled(False)
+                self.action_term.setEnabled(False)
 
     def _on_command_finished(self, markdown_output):
         if not self.isVisible():
