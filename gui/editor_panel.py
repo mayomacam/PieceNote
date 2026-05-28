@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 )
 from utils.helpers import APP_ROOT
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QThread, QObject, Slot
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QFont, QTextCursor, QIcon
 from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebChannel import QWebChannel
 
