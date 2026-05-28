@@ -128,7 +128,8 @@ class StorageManager:
             serialized = self._in_memory_conn.serialize()
             with open(self.filepath, "wb") as f:
                 f.write(serialized)
-            return
+            self._is_modified = False
+            return True
 
         self._create_backup()
         try:
