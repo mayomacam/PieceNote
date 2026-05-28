@@ -2,6 +2,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import sys
+import json
+import getpass
+from datetime import datetime
 
 def _get_app_root_for_logging():
     """
@@ -31,7 +34,7 @@ def setup_logging():
         log_file, maxBytes=1*1024*1024, backupCount=5, encoding='utf-8'
     )
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -46,11 +49,23 @@ def setup_logging():
     logger.info("="*50)
     return logger
 
-def audit_log(action, details=None):
+def audit_log(action, details=None, level="INFO"):
     """Specific logging for security-sensitive actions (SOC 2 alignment)."""
-    message = f"[AUDIT] Action: {action}"
-    if details:
-        message += f" | Details: {details}"
-    log.info(message)
+    # Use JSON formatting for structured logs
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "event_type": action,
+        "user_id": getpass.getuser(),
+        "details": details,
+        "level": level
+    }
+    message = f"[AUDIT] {json.dumps(log_entry)}"
+
+    if level == "CRITICAL":
+        log.critical(message)
+    elif level == "WARN":
+        log.warning(message)
+    else:
+        log.info(message)
 
 log = setup_logging()

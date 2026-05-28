@@ -23,14 +23,14 @@ class SidebarPanel(QWidget):
         self.notes = {}
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(15) # Increased spacing
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(24)
 
         # Folder section
         folder_frame = QFrame()
         folder_layout = QVBoxLayout(folder_frame)
         folder_layout.setContentsMargins(0, 0, 0, 0)
-        folder_layout.setSpacing(5)
+        folder_layout.setSpacing(8)
 
         folder_header = QHBoxLayout()
         folder_label = QLabel("FOLDERS")
@@ -59,8 +59,8 @@ class SidebarPanel(QWidget):
         # Note section
         note_frame = QFrame()
         note_layout = QVBoxLayout(note_frame)
-        note_layout.setContentsMargins(0, 5, 0, 0)
-        note_layout.setSpacing(5)
+        note_layout.setContentsMargins(0, 8, 0, 0)
+        note_layout.setSpacing(8)
 
         note_header = QHBoxLayout()
         note_label = QLabel("NOTES")
