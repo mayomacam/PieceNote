@@ -11,4 +11,5 @@ bleach
 xhtml2pdf
 
 # Security
+bleach
 cryptography

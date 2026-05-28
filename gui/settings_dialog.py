@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont
 from utils.helpers import get_settings, SETTINGS_FILE_PATH, log
+from utils.logger import audit_log
 import json
 
 class SettingsDialog(QDialog):
@@ -96,6 +97,7 @@ class SettingsDialog(QDialog):
 
         try:
             with open(SETTINGS_FILE_PATH, 'w') as f: json.dump(self.settings, f, indent=4)
+            audit_log("Settings Updated", f"New settings: {self.settings}")
         except IOError as e: log.error(f"Error saving settings: {e}")
 
         if path_changed or font_changed:

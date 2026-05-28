@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+app.log
+*.sqlite
+*.bak
+.env
+venv/
+.vscode/
+.idea/
+*.imported
