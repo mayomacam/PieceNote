@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFrame, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLabel, QInputDialog, QMessageBox, QAbstractItemView, QMenu, QLineEdit
 )
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, Signal
 from utils.helpers import SETTINGS, log
 from utils.logger import audit_log
@@ -20,62 +21,70 @@ class SidebarPanel(QWidget):
         self.current_folder = None
         self.folders = {}
         self.notes = {}
-        self.next_folder_id = 1
-        self.next_note_id = 1
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(15) # Increased spacing
 
         # Folder section
         folder_frame = QFrame()
         folder_layout = QVBoxLayout(folder_frame)
         folder_layout.setContentsMargins(0, 0, 0, 0)
-        folder_layout.setSpacing(2)
+        folder_layout.setSpacing(5)
 
         folder_header = QHBoxLayout()
         folder_label = QLabel("FOLDERS")
-        folder_label.setStyleSheet("font-weight: bold; color: #888; font-size: 9pt; margin-left: 5px;")
+        folder_label.setStyleSheet("font-weight: bold; color: var(--primary); font-size: 8pt; letter-spacing: 1px;")
         folder_header.addWidget(folder_label)
         folder_header.addStretch()
 
-        self.btn_folder_new = QPushButton("＋")
-        self.btn_folder_rename = QPushButton("✏")
-        self.btn_folder_del = QPushButton("🗑")
+        self.btn_folder_new = QPushButton()
+        self.btn_folder_new.setIcon(QIcon("assets/icons/folder.svg"))
+        self.btn_folder_rename = QPushButton()
+        self.btn_folder_rename.setIcon(QIcon("assets/icons/actions/rename.svg"))
+        self.btn_folder_del = QPushButton()
+        self.btn_folder_del.setIcon(QIcon("assets/icons/actions/delete.svg"))
         for btn in [self.btn_folder_new, self.btn_folder_rename, self.btn_folder_del]:
-            btn.setFixedWidth(28)
-            btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
+            btn.setFixedWidth(32)
+            btn.setFixedHeight(32)
+            btn.setStyleSheet("QPushButton { border: none; background: transparent; padding: 4px; } QPushButton:hover { background: var(--bg-accent); border-radius: 4px; }")
+            btn.setCursor(Qt.PointingHandCursor)
             folder_header.addWidget(btn)
 
         folder_layout.addLayout(folder_header)
         self.folder_list = QListWidget()
         folder_layout.addWidget(self.folder_list)
-        main_layout.addWidget(folder_frame, stretch=1)
+        main_layout.addWidget(folder_frame, stretch=2)
 
         # Note section
         note_frame = QFrame()
         note_layout = QVBoxLayout(note_frame)
         note_layout.setContentsMargins(0, 5, 0, 0)
-        note_layout.setSpacing(2)
+        note_layout.setSpacing(5)
 
         note_header = QHBoxLayout()
         note_label = QLabel("NOTES")
-        note_label.setStyleSheet("font-weight: bold; color: #888; font-size: 9pt; margin-left: 5px;")
+        note_label.setStyleSheet("font-weight: bold; color: var(--primary); font-size: 8pt; letter-spacing: 1px;")
         note_header.addWidget(note_label)
         note_header.addStretch()
 
-        self.btn_note_new = QPushButton("＋")
-        self.btn_note_rename = QPushButton("✏")
-        self.btn_note_del = QPushButton("🗑")
+        self.btn_note_new = QPushButton()
+        self.btn_note_new.setIcon(QIcon("assets/icons/note.svg"))
+        self.btn_note_rename = QPushButton()
+        self.btn_note_rename.setIcon(QIcon("assets/icons/actions/rename.svg"))
+        self.btn_note_del = QPushButton()
+        self.btn_note_del.setIcon(QIcon("assets/icons/actions/delete.svg"))
         for btn in [self.btn_note_new, self.btn_note_rename, self.btn_note_del]:
-            btn.setFixedWidth(28)
-            btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #3e3e42; }")
+            btn.setFixedWidth(32)
+            btn.setFixedHeight(32)
+            btn.setStyleSheet("QPushButton { border: none; background: transparent; padding: 4px; } QPushButton:hover { background: var(--bg-accent); border-radius: 4px; }")
+            btn.setCursor(Qt.PointingHandCursor)
             note_header.addWidget(btn)
 
         note_layout.addLayout(note_header)
 
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Filter notes...")
+        self.search_bar.setPlaceholderText("Filter notes in folder...")
         self.search_bar.setClearButtonEnabled(True)
         self.search_bar.textChanged.connect(self._filter_notes)
         note_layout.addWidget(self.search_bar)
@@ -84,7 +93,7 @@ class SidebarPanel(QWidget):
         self.note_list.setDragDropMode(QListWidget.InternalMove)
         self.note_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         note_layout.addWidget(self.note_list)
-        main_layout.addWidget(note_frame, stretch=2)
+        main_layout.addWidget(note_frame, stretch=3)
 
         self.load_data_from_storage()
         self._populate_folder_list()
@@ -117,7 +126,6 @@ class SidebarPanel(QWidget):
         self.note_list.customContextMenuRequested.connect(self._show_note_context_menu)
 
     def _on_folder_selection_changed(self):
-        """Handles folder selection and deselection to manage UI state."""
         current_item = self.folder_list.currentItem()
         if current_item:
             self.current_folder = current_item.data(Qt.UserRole)
@@ -185,36 +193,27 @@ class SidebarPanel(QWidget):
 
     def load_data_from_storage(self):
         data = self.storage.load()
-        self.folders = {int(k): v for k, v in data.get("folders", {}).items()}
-        self.notes = {int(k): v for k, v in data.get("notes", {}).items()}
-        self.next_folder_id = data.get("next_folder_id", 1)
-        self.next_note_id = data.get("next_note_id", 1)
+        self.folders = data.get("folders", {})
+        self.notes = data.get("notes", {})
         if not self.folders:
-            fid = self.next_folder_id
-            self.next_folder_id += 1
             default_name = SETTINGS.get("default_folder_name", "Default")
-            self.folders[fid] = {"name": default_name, "notes": []}
-            self.save_data_to_storage()
-
-    def save_data_to_storage(self):
-        # This method is now less critical as we do incremental updates,
-        # but we'll keep it for any bulk operations if needed in the future.
-        # For now, most actions call specific storage methods.
-        self.request_status_message.emit("Data is saved incrementally.", 3000)
+            fid = self.storage.create_folder(default_name)
+            if fid:
+                self.folders[fid] = {"name": default_name, "notes": []}
 
     def create_folder(self, name=None, activate=True):
         if not name:
             name, ok = QInputDialog.getText(self, "New Folder", "Enter folder name:")
-        if not name or not ok or not name.strip():
-            return
+            if not ok or not name.strip():
+                return
 
         fid = self.storage.create_folder(name)
         if fid:
+            audit_log("Folder Created", f"Name: {name} (ID: {fid})")
             self.folders[fid] = {"name": name, "notes": []}
-            self.next_folder_id = max(self.next_folder_id, fid + 1)
-            self._add_folder_item_to_list(fid, name)
+            self._populate_folder_list()
             if activate:
-                self.folder_list.setCurrentRow(self.folder_list.count() - 1)
+                self.select_folder_by_id(fid)
             self.request_status_message.emit(f"Folder '{name}' created.", 3000)
         else:
             QMessageBox.critical(self, "Error", "Failed to create folder in database.")
@@ -224,14 +223,13 @@ class SidebarPanel(QWidget):
             QMessageBox.warning(self, "No Folder", "Please select a folder to create a note in.")
             return
 
-        # We don't have a specific title yet, use a default
         temp_title = "Untitled Note"
         nid = self.storage.create_note(self.current_folder, temp_title)
 
         if nid:
+            audit_log("Note Created", f"Title: {temp_title} (ID: {nid}) in Folder ID: {self.current_folder}")
             self.notes[nid] = {"title": temp_title}
             self.folders[self.current_folder]["notes"].append(nid)
-            self.next_note_id = max(self.next_note_id, nid + 1)
             self._populate_note_list()
             self.update_folder_item_text(self.current_folder)
 
@@ -247,40 +245,42 @@ class SidebarPanel(QWidget):
 
     def update_note_content(self, nid, new_body):
         if self.storage.update_note_body(nid, new_body):
-            # We don't store the body in self.notes anymore (lazy loading)
             self.request_status_message.emit("Note saved.", 2000)
 
     def _populate_folder_list(self):
         self.folder_list.setUpdatesEnabled(False)
-        try:
-            self.folder_list.clear()
-            for fid in sorted(self.folders.keys()):
-                self._add_folder_item_to_list(fid, self.folders[fid]["name"])
-        finally:
-            self.folder_list.setUpdatesEnabled(True)
+        self.folder_list.clear()
+        for fid in sorted(self.folders.keys()):
+            self._add_folder_item_to_list(fid, self.folders[fid]["name"])
+        self.folder_list.setUpdatesEnabled(True)
 
     def _add_folder_item_to_list(self, fid, name):
         count = len(self.folders[fid].get("notes", []))
-        item = QListWidgetItem(f"📁 {name} ({count})")
+        item = QListWidgetItem(f"📁 {name}")
         item.setData(Qt.UserRole, fid)
+        # Small trick for counts: add them to the right or use a custom widget
+        # For simplicity, just append to text
+        item.setText(f"{name} ({count})")
         self.folder_list.addItem(item)
 
     def _populate_note_list(self):
+        self.note_list.setUpdatesEnabled(False)
         self.note_list.clear()
         if self.current_folder in self.folders:
             for i, nid in enumerate(self.folders[self.current_folder]["notes"]):
                 if nid in self.notes:
-                    item = QListWidgetItem(f"#{i+1:02d} - {self.notes[nid]['title']}")
+                    item = QListWidgetItem(f"{self.notes[nid]['title']}")
                     item.setData(Qt.UserRole, nid)
                     self.note_list.addItem(item)
         self._filter_notes()
+        self.note_list.setUpdatesEnabled(True)
 
     def update_folder_item_text(self, fid):
         for i in range(self.folder_list.count()):
             item = self.folder_list.item(i)
             if item.data(Qt.UserRole) == fid:
                 count = len(self.folders[fid]["notes"])
-                item.setText(f"📁 {self.folders[fid]['name']} ({count})")
+                item.setText(f"{self.folders[fid]['name']} ({count})")
                 break
 
     def get_note_by_id(self, nid):
@@ -310,6 +310,7 @@ class SidebarPanel(QWidget):
         new_name, ok = QInputDialog.getText(self, "Rename Folder", "New name:", text=old_name)
         if ok and new_name.strip() and new_name != old_name:
             if self.storage.rename_folder(fid, new_name):
+                audit_log("Folder Renamed", f"Old: {old_name} -> New: {new_name} (ID: {fid})")
                 self.folders[fid]["name"] = new_name
                 self.update_folder_item_text(fid)
                 self.request_status_message.emit("Folder renamed.", 2000)
@@ -325,6 +326,7 @@ class SidebarPanel(QWidget):
         new_title, ok = QInputDialog.getText(self, "Rename Note", "New title:", text=old_title)
         if ok and new_title.strip() and new_title != old_title:
             if self.storage.update_note_title(nid, new_title):
+                audit_log("Note Renamed", f"Old: {old_title} -> New: {new_title} (ID: {nid})")
                 self.notes[nid]["title"] = new_title
                 self._populate_note_list()
                 self.request_status_message.emit("Note renamed.", 2000)
@@ -364,13 +366,8 @@ class SidebarPanel(QWidget):
         if not items:
             return
         note_count = len(items)
-        if note_count == 1:
-            note_title = items[0].text().split(' - ', 1)[-1]
-            question = f"Delete '{note_title}'?"
-        else:
-            question = f"Delete {note_count} notes?"
         reply = QMessageBox.question(
-            self, "Delete Notes", question, QMessageBox.Yes | QMessageBox.No
+            self, "Delete Notes", f"Delete {note_count} note(s)?", QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
             ids_to_remove = [item.data(Qt.UserRole) for item in items]
@@ -390,7 +387,7 @@ class SidebarPanel(QWidget):
                 self._update_button_states()
                 self.request_status_message.emit(f"{note_count} note(s) deleted.", 3000)
             else:
-                QMessageBox.critical(self, "Error", "Failed to delete some notes from database.")
+                QMessageBox.critical(self, "Error", "Failed to delete notes from database.")
 
     def _on_note_double_clicked(self, item):
         self.note_open_requested.emit(item.data(Qt.UserRole))
@@ -401,10 +398,9 @@ class SidebarPanel(QWidget):
         new_order = [self.note_list.item(i).data(Qt.UserRole) for i in range(self.note_list.count())]
         if self.storage.reorder_notes(self.current_folder, new_order):
             self.folders[self.current_folder]["notes"] = new_order
-            self._populate_note_list()
             self.request_status_message.emit("Notes reordered.", 2000)
         else:
-            QMessageBox.critical(self, "Error", "Failed to save new order to database.")
+            QMessageBox.critical(self, "Error", "Failed to save new order.")
 
     def _filter_notes(self):
         query = self.search_bar.text().lower()

@@ -10,5 +10,5 @@ pymdown-extensions
 xhtml2pdf
 
 # Security
-cryptography
 bleach
+cryptography

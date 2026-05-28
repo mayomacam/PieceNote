@@ -3,6 +3,7 @@ import re
 import pathlib
 import markdown
 from pygments.formatters import HtmlFormatter
+from utils.logger import audit_log
 
 try:
     from xhtml2pdf import pisa
@@ -38,6 +39,7 @@ def export_notes_to_file(filepath, notes_list, file_format, single_file=False):
     Exports a LIST of notes to a specified file or files, preserving order.
     """
     if single_file:
+        audit_log("Data Export (Single File)", f"Format: {file_format} | Path: {filepath} | Notes: {len(notes_list)}")
         combined_content = ""
         for note in notes_list:
             if not note: continue
@@ -45,6 +47,7 @@ def export_notes_to_file(filepath, notes_list, file_format, single_file=False):
             combined_content += f"# {note['title']}\n\n{processed_body}\n\n---\n\n"
         _write_file(filepath, combined_content.strip(), "CyberNotes Export", file_format)
     else:
+        audit_log("Data Export (Multiple Files)", f"Format: {file_format} | Base Path: {filepath} | Notes: {len(notes_list)}")
         output_dir = os.path.dirname(filepath)
         base_filename = os.path.splitext(os.path.basename(filepath))[0]
         for i, note in enumerate(notes_list):

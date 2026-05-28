@@ -1,18 +1,12 @@
-# PieceNote Build Artifacts
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Storage and Backups
+*.py[cod]
+*$py.class
+app.log
 *.sqlite
 *.bak
-backups/
-
-# Logs
-*.log
+.env
+venv/
+.vscode/
+.idea/
+*.imported
