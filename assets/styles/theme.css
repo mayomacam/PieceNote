@@ -27,6 +27,19 @@
     --border: #3e3e3e;
 }
 
+:root {
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #252526;
+    --bg-tertiary: #2d2d2d;
+    --bg-highlight: #3c3c3c;
+    --text-main: #cccccc;
+    --text-bright: #ffffff;
+    --accent-blue: #007acc;
+    --accent-blue-hover: #118ad4;
+    --border-color: #3e3e3e;
+    --sidebar-text: #888;
+}
+
 QWidget {
     background-color: var(--bg-main);
     color: var(--text-main);
@@ -212,4 +225,12 @@ QScrollBar::handle:vertical {
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
+}
+
+QLabel#HeaderLabel {
+    font-weight: bold;
+    color: var(--sidebar-text);
+    font-size: 9pt;
+    letter-spacing: 1px;
+    text-transform: uppercase;
 }

@@ -5,6 +5,7 @@ PySide6
 markdown
 Pygments
 pymdown-extensions
+bleach
 
 # PDF Export Functionality
 xhtml2pdf

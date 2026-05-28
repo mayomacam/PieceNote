@@ -4,7 +4,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, Signal
-from utils.helpers import SETTINGS, log
+from PySide6.QtGui import QIcon
+import os
+from utils.helpers import SETTINGS, log, APP_ROOT
 from utils.logger import audit_log
 
 
@@ -404,9 +406,11 @@ class SidebarPanel(QWidget):
 
     def _filter_notes(self):
         query = self.search_bar.text().lower()
+        self.note_list.setUpdatesEnabled(False)
         for i in range(self.note_list.count()):
             item = self.note_list.item(i)
             item.setHidden(query not in item.text().lower())
+        self.note_list.setUpdatesEnabled(True)
 
     def select_folder_by_id(self, folder_id_to_select):
         for i in range(self.folder_list.count()):
