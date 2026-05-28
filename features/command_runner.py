@@ -1,5 +1,6 @@
 import subprocess
 import shlex
+import re
 from PySide6.QtCore import QObject, Signal
 from utils.logger import audit_log
 
@@ -18,12 +19,6 @@ class CommandRunner(QObject):
         'nslookup', 'traceroute', 'tracert', 'ps'
     }
 
-    # SOC 2: Command Whitelist to prevent arbitrary code execution
-    WHITELIST = {
-        "nmap", "whoami", "ls", "pwd", "ping", "netstat", "ipconfig", "ifconfig",
-        "id", "uname", "hostname", "cat", "grep", "head", "tail", "df", "free", "uptime"
-    }
-
     def __init__(self, command):
         super().__init__()
         self.command = command.strip()
@@ -38,15 +33,23 @@ class CommandRunner(QObject):
             base_cmd = base_cmd[:-4]
 
         if base_cmd not in self.WHITELIST:
-            audit_log("Security Violation", f"Command rejected (not in whitelist): {base_cmd}")
+            audit_log("Security Violation", f"Command rejected (not in whitelist): {base_cmd}", level="WARN")
             return False
 
-        # Disallow command chaining and redirection to prevent shell injection.
-        forbidden_chars = [';', '&', '|', '>', '<', '`', '$', '(', ')']
+        # SOC 2: Strict regex validation for each argument
+        # Only allow alphanumeric, spaces, hyphens, underscores, dots, and slashes.
+        safe_pattern = re.compile(r'^[a-zA-Z0-9\s\-_./]+$')
+
         for arg in args:
-            if any(char in arg for char in forbidden_chars):
-                audit_log("Security Violation", f"Command rejected (suspicious characters): {self.command}")
+            if not safe_pattern.match(arg):
+                audit_log("Security Violation", f"Command rejected (unsafe argument): {arg}", level="WARN")
                 return False
+
+            # Additional check: If it looks like a flag, ensure it's not a complex nested command
+            if arg.startswith('-'):
+                if not re.match(r'^-[a-zA-Z0-9\-]+$', arg):
+                    audit_log("Security Violation", f"Command rejected (unsafe flag): {arg}", level="WARN")
+                    return False
 
         return True
 

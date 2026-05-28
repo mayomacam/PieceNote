@@ -4,9 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon
-import os
-from utils.helpers import SETTINGS, log, APP_ROOT
+from utils.helpers import SETTINGS, log
 from utils.logger import audit_log
 
 
@@ -25,14 +23,14 @@ class SidebarPanel(QWidget):
         self.notes = {}
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(15) # Increased spacing
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(24)
 
         # Folder section
         folder_frame = QFrame()
         folder_layout = QVBoxLayout(folder_frame)
         folder_layout.setContentsMargins(0, 0, 0, 0)
-        folder_layout.setSpacing(5)
+        folder_layout.setSpacing(8)
 
         folder_header = QHBoxLayout()
         folder_label = QLabel("FOLDERS")
@@ -61,8 +59,8 @@ class SidebarPanel(QWidget):
         # Note section
         note_frame = QFrame()
         note_layout = QVBoxLayout(note_frame)
-        note_layout.setContentsMargins(0, 5, 0, 0)
-        note_layout.setSpacing(5)
+        note_layout.setContentsMargins(0, 8, 0, 0)
+        note_layout.setSpacing(8)
 
         note_header = QHBoxLayout()
         note_label = QLabel("NOTES")
@@ -136,12 +134,7 @@ class SidebarPanel(QWidget):
             self.search_bar.clear()
             self.note_list.setEnabled(True)
             self.search_bar.setEnabled(True)
-
-            self.note_list.setUpdatesEnabled(False)
-            try:
-                self._populate_note_list()
-            finally:
-                self.note_list.setUpdatesEnabled(True)
+            self._populate_note_list()
         else:
             self.current_folder = None
             self.note_list.clear()
@@ -406,11 +399,9 @@ class SidebarPanel(QWidget):
 
     def _filter_notes(self):
         query = self.search_bar.text().lower()
-        self.note_list.setUpdatesEnabled(False)
         for i in range(self.note_list.count()):
             item = self.note_list.item(i)
             item.setHidden(query not in item.text().lower())
-        self.note_list.setUpdatesEnabled(True)
 
     def select_folder_by_id(self, folder_id_to_select):
         for i in range(self.folder_list.count()):

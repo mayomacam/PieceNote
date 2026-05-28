@@ -1,12 +1,12 @@
 from PySide6.QtWidgets import (
-    QMainWindow, QSplitter, QMessageBox, QFileDialog, QLabel, QTabWidget, QWidget, QVBoxLayout
+    QMainWindow, QSplitter, QMessageBox, QFileDialog, QLabel, QTabWidget, QWidget, QVBoxLayout,
+    QApplication
 )
-from PySide6.QtGui import QAction, QIcon
-import os
-from utils.helpers import APP_ROOT
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt, QSettings, QTimer, QEvent
 
 from gui.sidebar_panel import SidebarPanel
+from gui.password_dialog import PasswordDialog
 from gui.editor_panel import EditorPanel
 from gui.settings_dialog import SettingsDialog
 from features.storage import StorageManager, DatabaseCorruptError
@@ -15,6 +15,34 @@ from utils.logger import audit_log
 from features.export import export_notes_to_file
 from gui.search_dialog import SearchDialog
 from gui.help_dialogs import MarkdownGuideDialog
+
+
+class EmptyStateWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+
+        icon_label = QLabel("📝")
+        icon_label.setObjectName("EmptyStateIcon")
+        icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_label)
+
+        title_label = QLabel("Start Writing")
+        title_label.setObjectName("EmptyStateTitle")
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+
+        desc_label = QLabel("Select a note from the sidebar or create a new one to begin.")
+        desc_label.setObjectName("EmptyStateDesc")
+        desc_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(desc_label)
+
+        self.btn_new_note = QPushButton("Create New Note")
+        self.btn_new_note.setObjectName("EmptyStateButton")
+        self.btn_new_note.setFixedWidth(200)
+        layout.addWidget(self.btn_new_note, 0, Qt.AlignCenter)
 
 
 class PieceNoteMainWindow(QMainWindow):
@@ -29,23 +57,18 @@ class PieceNoteMainWindow(QMainWindow):
         try:
             self.storage = storage if storage else StorageManager()
             self.sidebar = SidebarPanel(self.storage)
-        else:
-            try:
-                self.storage = StorageManager()
-                self.sidebar = SidebarPanel(self.storage)
-            except DatabaseCorruptError:
-                self.handle_db_corruption()
-                return
+        except DatabaseCorruptError:
+            self.handle_db_corruption()
+            return
 
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setMovable(True)
         self.tab_widget.setDocumentMode(True)
 
-        self.placeholder_label = QLabel("Select a note from the sidebar to open.")
-        self.placeholder_label.setAlignment(Qt.AlignCenter)
-        self.placeholder_label.setStyleSheet("color: var(--text-muted); font-size: 14pt;")
-        self.tab_widget.addTab(self.placeholder_label, "")
+        self.empty_state = EmptyStateWidget()
+        self.empty_state.btn_new_note.clicked.connect(self.sidebar.create_note)
+        self.tab_widget.addTab(self.empty_state, "")
         self.tab_widget.tabBar().setTabVisible(0, False)
 
         self.splitter = QSplitter(Qt.Horizontal)
@@ -79,9 +102,59 @@ class PieceNoteMainWindow(QMainWindow):
 
         self.settings = SETTINGS
         self._create_menu_bar()
-        self._create_tool_bar()
         self._restore_window_state()
+
+        # Database persistence timer (performance enhancement)
+        self.db_save_timer = QTimer(self)
+        self.db_save_timer.setInterval(60000) # 60 seconds
+        self.db_save_timer.timeout.connect(self._background_db_save)
+        self.db_save_timer.start()
+
+        # SOC 2: Inactivity Auto-Lock (15 minutes)
+        self.lock_timer = QTimer(self)
+        self.lock_timer.setInterval(15 * 60 * 1000)
+        self.lock_timer.timeout.connect(self.auto_lock)
+        self.lock_timer.start()
+        QApplication.instance().installEventFilter(self)
+
         self.statusBar().showMessage("Ready", 3000)
+
+    def eventFilter(self, obj, event):
+        if event.type() in [QEvent.MouseMove, QEvent.KeyPress, QEvent.MouseButtonPress]:
+            if hasattr(self, 'lock_timer'):
+                self.lock_timer.start() # Reset timer on activity
+        return super().eventFilter(obj, event)
+
+    def auto_lock(self):
+        audit_log("Security", "Application auto-locked due to inactivity.")
+        self.lock_timer.stop()
+
+        # If no master password is set, we don't need to lock (though SOC 2 recommends it)
+        if self.master_password is None:
+            self.lock_timer.start()
+            return
+
+        dialog = PasswordDialog(self, mode="login")
+        dialog.btn_cancel.setText("Exit App") # Re-purpose cancel to allow exit
+
+        while True:
+            if dialog.exec() == PasswordDialog.Accepted:
+                if dialog.get_password() == self.master_password:
+                    audit_log("Security", "Application unlocked after auto-lock.")
+                    self.lock_timer.start()
+                    break
+                else:
+                    QMessageBox.warning(self, "Unlock Failed", "Incorrect password.")
+            else:
+                # If they cancel/exit the dialog, exit the application
+                audit_log("Security", "User closed the unlock dialog. Exiting application.")
+                QApplication.quit()
+                break
+
+    def _background_db_save(self):
+        if self.storage and self.storage._dirty:
+            self.storage.save_to_disk()
+            audit_log("Background Save", "Database persisted to disk automatically.")
 
     def apply_live_settings(self):
         self.settings = get_settings()
@@ -153,32 +226,6 @@ class PieceNoteMainWindow(QMainWindow):
                 QMessageBox.information(self, "Success", "Database restored. Please restart.")
         self.close()
 
-    def _create_tool_bar(self):
-        self.toolbar = QToolBar("Main Toolbar")
-        self.toolbar.setMovable(False)
-        self.toolbar.setIconSize(self.toolbar.iconSize() * 1.5)
-        self.addToolBar(self.toolbar)
-
-        new_folder_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/folder.svg")), "New Folder", self)
-        new_folder_act.triggered.connect(self.sidebar.create_folder)
-        self.toolbar.addAction(new_folder_act)
-
-        new_note_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/note.svg")), "New Note", self)
-        new_note_act.triggered.connect(self.sidebar.create_note)
-        self.toolbar.addAction(new_note_act)
-
-        self.toolbar.addSeparator()
-
-        save_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/note.svg")), "Save All", self) # Should use a save icon if available
-        save_act.triggered.connect(self.sidebar.save_data_to_storage)
-        self.toolbar.addAction(save_act)
-
-        self.toolbar.addSeparator()
-
-        search_act = QAction(QIcon(os.path.join(APP_ROOT, "assets/icons/actions/rename.svg")), "Search", self) # Placeholder
-        search_act.triggered.connect(self.open_search_dialog)
-        self.toolbar.addAction(search_act)
-
     def _create_menu_bar(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("File")
@@ -236,15 +283,7 @@ class PieceNoteMainWindow(QMainWindow):
             if reply == QMessageBox.Yes:
                 for editor in unsaved_editors: editor._autosave()
 
-        # Persist the in-memory database to the encrypted disk file
         if self.storage:
-            try:
-                self.storage.save_to_disk()
-                log.info("Database successfully persisted to disk on exit.")
-            except Exception as e:
-                log.error(f"Failed to save database on exit: {e}")
-                QMessageBox.critical(self, "Save Error", f"Failed to save changes: {e}")
-
             self._save_window_state()
             self.storage.save_to_disk()
         event.accept()
